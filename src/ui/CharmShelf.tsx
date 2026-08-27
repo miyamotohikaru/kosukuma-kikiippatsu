@@ -399,40 +399,61 @@ function bearPoly(l: BearLobe, n: number): Pt[] {
 
 const BEAR_POLYS = BEAR_LOBES.map((l) => bearPoly(l, l.round ? 24 : 44));
 
-// ── こすくまくんの かお(隠し。1万回つついた人だけ) ──────────────
-// 全身の「あたま + みみ」だけを取り出して、箱いっぱいに描いたもの。
-// 300本の全身チャームと並ぶので、同じ絵を小さくしただけでは見分けがつかない。
-// 顔だけにして倍近く大きくすると、粒(9px)でも「こすくまくんだ」と分かる。
-const FACE_S = 25.9;
-const FACE_CX = 12;
-const FACE_CY = 14.68;
-const FACE_LOBES: BearLobe[] = [
-  { round: true, cx: -0.268, cy: 0.215, rx: 0.135, ry: 0.135 },
-  { round: true, cx: 0.268, cy: 0.215, rx: 0.135, ry: 0.135 },
-  // あご: 全身では むね へ続くので細かったが、顔だけなら まるく閉じる
+// ── こすくまくん ふたり(ねそべり。300本のごほうび) ──────────────
+// 公式ロゴそのままの構図: こちらを向いて寝そべった子の後ろに、
+// 背中を向けたもう1匹が重なっている。横長なので、同じ24の箱でも
+// おすわり1匹より ぐっと大きく描ける = 粒(9px)でも2匹だと分かる。
+//
+// **重なりの順(奥 → 手前)がそのまま線の重なり。** 奥の子の輪郭は、
+// 手前の子に隠れたぶんだけ消える(3Dのインクアウトラインと同じ規則)。
+const LIE_S = 21.3;
+const LIE_CX = 12;
+const LIE_CY = 14.26;
+const LIE_LOBES: BearLobe[] = [
+  // 奥の子(背中を向けている): みみ → からだ
+  { round: true, cx: 0.423, cy: 0.26, rx: 0.075, ry: 0.075 },
   {
     round: false,
-    cx: 0,
-    cy: 0,
-    rx: 0.315,
-    ry: 0.305,
-    pTop: 0.85,
-    pBot: 0.72,
-    taper: 0.03,
+    cx: 0.297,
+    cy: -0.017,
+    rx: 0.207,
+    ry: 0.29,
+    pTop: 1,
+    pBot: 1,
   },
+  // 手前の子: みみ ふたつ → からだ
+  { round: true, cx: -0.39, cy: 0.227, rx: 0.1, ry: 0.1 },
+  { round: true, cx: 0.017, cy: 0.233, rx: 0.1, ry: 0.1 },
+  {
+    round: false,
+    cx: -0.163,
+    cy: 0.017,
+    rx: 0.293,
+    ry: 0.31,
+    pTop: 1,
+    pBot: 1,
+  },
+  // あし: いちばん手前。輪郭がまるごと体の上に出る
+  { round: true, cx: 0.13, cy: -0.24, rx: 0.1, ry: 0.075 },
+  { round: true, cx: -0.117, cy: -0.247, rx: 0.12, ry: 0.073 },
+  { round: true, cx: -0.423, cy: -0.18, rx: 0.057, ry: 0.067 },
 ];
-const FACE_POLYS = FACE_LOBES.map((l) =>
-  lobePoly(l, l.round ? 24 : 44, FACE_S, FACE_CX, FACE_CY),
+const LIE_POLYS = LIE_LOBES.map((l) =>
+  lobePoly(l, l.round ? 24 : 44, LIE_S, LIE_CX, LIE_CY),
 );
-const FACE_EYE_R = 0.027 * FACE_S;
-const FACE_EYES: Pt[] = [-0.073, 0.073].map((x) => [
-  FACE_CX + x * FACE_S,
-  FACE_CY + 0.092 * FACE_S,
-]);
-const FACE_MOUTH =
-  `M${(FACE_CX - 0.032 * FACE_S).toFixed(2)} ${(FACE_CY + 0.122 * FACE_S).toFixed(2)}` +
-  `L${(FACE_CX + 0.032 * FACE_S).toFixed(2)} ${(FACE_CY + 0.122 * FACE_S).toFixed(2)}` +
-  `L${FACE_CX.toFixed(2)} ${(FACE_CY + 0.152 * FACE_S).toFixed(2)}Z`;
+const LIE_EYE_R = 0.023 * LIE_S;
+const LIE_EYES: Pt[] = [
+  [-0.31, -0.15],
+  [-0.23, -0.143],
+].map(([x, y]) => [LIE_CX + x * LIE_S, LIE_CY - y * LIE_S]);
+/** 鼻: 下向きの小さな三角(3Dは3面のコーンを埋めている) */
+const LIE_NOSE =
+  `M${(LIE_CX - 0.293 * LIE_S).toFixed(2)} ${(LIE_CY + 0.176 * LIE_S).toFixed(2)}` +
+  `L${(LIE_CX - 0.249 * LIE_S).toFixed(2)} ${(LIE_CY + 0.176 * LIE_S).toFixed(2)}` +
+  `L${(LIE_CX - 0.271 * LIE_S).toFixed(2)} ${(LIE_CY + 0.206 * LIE_S).toFixed(2)}Z`;
+/** 奥の子の背中の ほくろ */
+const LIE_MOLE: Pt = [LIE_CX + 0.387 * LIE_S, LIE_CY - 0.073 * LIE_S];
+const LIE_MOLE_R = 0.032 * LIE_S;
 
 function inPoly(pts: Pt[], x: number, y: number): boolean {
   let inside = false;
@@ -459,8 +480,8 @@ function bearBodyD(): string {
   return BEAR_POLYS.map((p) => polyD(p, true)).join("");
 }
 
-function faceBodyD(): string {
-  return FACE_POLYS.map((p) => polyD(p, true)).join("");
+function lieBodyD(): string {
+  return LIE_POLYS.map((p) => polyD(p, true)).join("");
 }
 
 /**
@@ -512,8 +533,8 @@ function bearInkD(): string {
   return inkD(BEAR_POLYS);
 }
 
-function faceInkD(): string {
-  return inkD(FACE_POLYS);
+function lieInkD(): string {
+  return inkD(LIE_POLYS);
 }
 
 /** 目・口・ほくろ。3D の buildBear と同じ位置(単位空間 → 24の箱) */
@@ -536,7 +557,7 @@ const BEAR_MOLE: Pt = [BEAR_CX + 0.188 * BEAR_S, BEAR_CY + 0.325 * BEAR_S];
  */
 const STROKE: Partial<Record<CharmShape, string>> = {
   bear: bearInkD(),
-  bearface: faceInkD(),
+  bearlie: lieInkD(),
 };
 
 /** ハート: おなじみのハート曲線。ぷっくりさせたいので横に少し広げてある */
@@ -651,8 +672,8 @@ const BODY: Record<CharmShape, string> = {
   tassel: TASSEL_CRIMP + TASSEL_CORDS.join(""),
   // こすくまくん: 全身(みみ・あたま+むね・うで・おなか・あし)の union
   bear: bearBodyD(),
-  // こすくまくんの かお(隠し): あたま + みみ だけを箱いっぱいに
-  bearface: faceBodyD(),
+  // こすくまくん ふたり(ねそべり): 公式ロゴの構図
+  bearlie: lieBodyD(),
   // ちきゅう(隠し): 球 + こわれて飛んだ かけら2つ(3Dの buildEarth と同じ約束)
   earth:
     "M3.8 14a8.2 8.2 0 1 0 16.4 0a8.2 8.2 0 1 0-16.4 0Z" +
@@ -1020,30 +1041,35 @@ function accentsOf(c: Charm, detail: boolean, clip: string): ReactNode {
         </>
       );
 
-    case "bearface":
+    case "bearlie":
       return (
         <>
-          {/* かおも、太い黒の輪郭線がそのまま記号。粒でも描く */}
+          {/* 太い黒の輪郭線。このキャラクターの記号なので、**粒(9px)でも描く** */}
           <path
-            d={STROKE.bearface}
+            d={STROKE.bearlie}
             fill="none"
             stroke={ac}
-            strokeWidth="0.95"
+            strokeWidth="0.85"
             strokeLinejoin="round"
             strokeLinecap="round"
           />
-          {/* 顔だけなので、全身より目と口が大きい。粒でも残せる */}
+          {/* 目・鼻・ほくろは 24px でも1px弱。粒では落とす(LOD) */}
           {detail && (
             <g fill={ac}>
-              {FACE_EYES.map(([x, y]) => (
+              {LIE_EYES.map(([x, y]) => (
                 <circle
                   key={x}
                   cx={x.toFixed(2)}
                   cy={y.toFixed(2)}
-                  r={FACE_EYE_R.toFixed(2)}
+                  r={LIE_EYE_R.toFixed(2)}
                 />
               ))}
-              <path d={FACE_MOUTH} />
+              <path d={LIE_NOSE} />
+              <circle
+                cx={LIE_MOLE[0].toFixed(2)}
+                cy={LIE_MOLE[1].toFixed(2)}
+                r={LIE_MOLE_R.toFixed(2)}
+              />
             </g>
           )}
         </>

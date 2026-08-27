@@ -845,45 +845,76 @@ function buildBear(bag: Bag): void {
 }
 
 /**
- * こすくまくんの かお(隠し。1万回つついた人だけ)。
- * 全身チャームの「あたま + みみ」だけを取り出して、同じ背丈まで大きくしたもの。
- * 全身をただ縮めた粒とは別物に見えるように、目と口はその分だけ大きく残る。
+ * こすくまくん ふたり(ねそべり)。300本のごほうび = 公式ロゴの構図。
+ * こちらを向いて寝そべった子の後ろに、背中を向けたもう1匹が重なっている。
+ * 横長なので、おすわり1匹より ぐっと大きく描ける = 遠目でも2匹だと分かる。
+ *
+ * **奥から手前の順に積むこと。** 黒い殻(インクアウトライン)は
+ * 手前のパーツに隠れた線が消える仕組みなので、順番がそのまま絵になる。
+ * 数値は 2D(CharmShelf.tsx の LIE_LOBES)とまったく同じ。
  */
-const FACE_FIT = 1.42;
+const LIE_FIT = 1.05;
+/** 奥の子(背中を向けている)の板の中心と厚み */
+const LIE_BACK_Z = -0.05;
+const LIE_BACK_T = 0.09;
+/** 手前の子の板の中心と厚み */
+const LIE_FRONT_Z = 0.05;
+const LIE_FRONT_T = 0.105;
 
-function buildBearFace(bag: Bag): void {
-  for (const s of [-1, 1]) {
-    // みみ(あたまの後ろへ)
-    bearBlob(bag, s * 0.268, 0.215, -0.09, 0.135, 0.135, 0.055, 6, 5);
-  }
-  // あたま。全身では むね へ続いていた裾を、顔だけなので まるく閉じる
+function buildBearLie(bag: Bag): void {
+  // 奥の子: みみ(さらに奥) → からだ
+  bearBlob(bag, 0.423, 0.26, -0.13, 0.075, 0.075, 0.045, 5, 4);
   bearLobe(
     bag,
-    squirclePoints(0, 0, 0.315, 0.305, 0.85, 0.72, 0.03),
-    BEAR_HEAD_Z,
-    BEAR_HEAD_T,
+    squirclePoints(0.297, -0.017, 0.207, 0.29, 1, 1, 0),
+    LIE_BACK_Z,
+    LIE_BACK_T,
+    20,
+    15
+  );
+  // 手前の子: みみ ふたつ → からだ
+  bearBlob(bag, -0.39, 0.227, -0.005, 0.1, 0.1, 0.05, 6, 5);
+  bearBlob(bag, 0.017, 0.233, -0.005, 0.1, 0.1, 0.05, 6, 5);
+  bearLobe(
+    bag,
+    squirclePoints(-0.163, 0.017, 0.293, 0.31, 1, 1, 0),
+    LIE_FRONT_Z,
+    LIE_FRONT_T,
     22,
     16
   );
-  for (const s of [-1, 1]) {
-    put(
-      bag,
-      xf(ball(0.027, 6), [s * 0.073, -0.092, BEAR_HEAD_Z + BEAR_HEAD_T * 0.94]),
-      "accent"
-    );
+  // あし: いちばん手前
+  bearBlob(bag, 0.13, -0.24, 0.1, 0.1, 0.075, 0.05, 5, 4);
+  bearBlob(bag, -0.117, -0.247, 0.1, 0.12, 0.073, 0.05, 5, 4);
+  bearBlob(bag, -0.423, -0.18, 0.1, 0.057, 0.067, 0.045, 4, 3);
+
+  // 顔(手前の子の表面へ)
+  const faceZ = LIE_FRONT_Z + LIE_FRONT_T * 0.94;
+  for (const [x, y] of [
+    [-0.31, -0.15],
+    [-0.23, -0.143],
+  ]) {
+    put(bag, xf(ball(0.023, 6), [x, y, faceZ]), "accent");
   }
-  const mouth = new THREE.ConeGeometry(0.032, 0.03, 3);
+  // 鼻。下向きの小さな三角なので、3面のコーンを逆さに埋める
   put(
     bag,
     xf(
-      mouth,
-      [0, -0.137, BEAR_HEAD_Z + BEAR_HEAD_T * 0.92],
+      new THREE.ConeGeometry(0.026, 0.028, 3),
+      [-0.271, -0.188, LIE_FRONT_Z + LIE_FRONT_T * 0.92],
       [0, 0, Math.PI],
       [1, 1, 0.5]
     ),
     "accent"
   );
-  for (const it of bag) xf(it.geo, undefined, undefined, FACE_FIT);
+  // 奥の子の背中の ほくろ(手前の子とは重ならない位置なので、これで見える)
+  put(
+    bag,
+    xf(ball(0.032, 6), [0.387, 0.073, LIE_BACK_Z + LIE_BACK_T * 0.85]),
+    "accent"
+  );
+
+  for (const it of bag) xf(it.geo, undefined, undefined, LIE_FIT);
 }
 
 // ── 隠しチャーム「ちきゅう」────────────────────────────────
@@ -1302,9 +1333,10 @@ export function makeCharmParts(shape: CharmShape, size = 0.085): CharmBuild {
     case "bear":
       buildBear(bag);
       return finish(bag, size);
-    case "bearface":
-      buildBearFace(bag);
-      return finish(bag, size);
+    case "bearlie":
+      // 横長なので、ぶら下げ点は真ん中でいい(重心の真上)
+      buildBearLie(bag);
+      return finish(bag, size, { bail: 0.09 });
     case "earth":
       buildEarth(bag);
       return finish(bag, size * 1.06, { spin: true });

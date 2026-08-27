@@ -162,15 +162,14 @@ export type CharmShape =
   | "star" // ぷっくり星
   | "plate" // ネームプレート
   | "tassel" // ひものタッセル
-  | "bear" // こすくまくん(全身。公式ロゴのポーズ)
+  | "bear" // こすくまくん(おすわり)
+  | "bearlie" // こすくまくん ふたり(ねそべり。公式ロゴ)
   | "earth" // ちきゅう(隠し)
   // ── ここから下は、月の向こうを横切るものをつかまえて手に入れる ──
   | "comet" // ながれぼし
   | "rocket" // ロケット
   | "satellite" // じんこうえいせい
-  | "ufo" // UFO
-  // ── こすくまくんを つつきつづけた人だけ ──
-  | "bearface"; // こすくまくんの かお(隠し)
+  | "ufo"; // UFO
 
 /** チャームの素材。見た目(金属感・透け・つや)を決める */
 export type CharmMaterial =
@@ -298,7 +297,7 @@ export const CHARMS: readonly Charm[] = [
     need: 300,
     name: "こすくまくん",
     emoji: "🐻",
-    shape: "bear",
+    shape: "bearlie",
     hex: "#fdf7c1",
     accentHex: "#2b2620",
     material: "resin",
@@ -357,13 +356,13 @@ export const CHARMS: readonly Charm[] = [
     secret: true,
   },
   // ── こすくまくんを POKE_CHARM_NEED 回つついた人だけ ──
-  // 300本の「こすくまくん」チャームは全身。こちらは顔だけを大きく抜いた別物で、
-  // 並べたときに一目で違うものだと分かるようにしてある。
+  // 300本のほうは ねそべった2匹(ロゴ)。こちらは おすわりの1匹で、
+  // 並べたときに一目で違うものだと分かる。
   {
     need: Infinity,
-    name: "こすくまくんの かお",
+    name: "すわりこすくまくん",
     emoji: "🐻",
-    shape: "bearface",
+    shape: "bear",
     hex: "#fdf7c1",
     accentHex: "#2b2620",
     material: "resin",
@@ -420,7 +419,7 @@ export function skyCharmLevelOf(catches: number): number {
 export const POKE_CHARM_NEED = 10000;
 
 /** つつきで手に入る隠しチャーム(CHARMS の index) */
-export const POKE_CHARM_INDEX = CHARMS.findIndex((c) => c.shape === "bearface");
+export const POKE_CHARM_INDEX = CHARMS.findIndex((c) => c.shape === "bear");
 
 /** 空のものが飛んでくる間隔(ms)。この幅でランダムに次が決まる */
 export const SKY_GAP_MS: [number, number] = [9000, 22000];

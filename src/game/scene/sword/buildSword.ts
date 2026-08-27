@@ -411,13 +411,19 @@ const SPARKLE_VERTEX_CHUNK = /* glsl */ `
 const SPARKLE_CHUNK = /* glsl */ `
 	{
 		// 刃を上へ流れる細い帯。pow でとがらせて「すっと通る光」にする
-		// 帯は細く。太いと「刃の半分が白い板」に見えて、光ではなく描画のバグに見える
-		float sparkBand = sin( vSparkleY * 11.0 - uSwordTime * 1.9 + vSparkleSeed * 6.28318 );
-		float sparkGlint = pow( max( sparkBand, 0.0 ), 22.0 );
+		// 帯は2本。速さも幅も向きも変えて重ねると、規則正しい明滅ではなく
+		// 「ときどき ぎらっと来る」金属の見え方になる。1本だと呼吸に見える
+		float sparkB1 = sin( vSparkleY * 9.0 - uSwordTime * 2.4 + vSparkleSeed * 6.28318 );
+		float sparkB2 = sin( vSparkleY * 17.0 + uSwordTime * 1.5 + vSparkleSeed * 11.0 );
+		float sparkGlint =
+			pow( max( sparkB1, 0.0 ), 13.0 ) + 0.7 * pow( max( sparkB2, 0.0 ), 26.0 );
 		// ふちほど強い(金属の反射は輪郭に出る)。まん中だけ光ると板に見える
 		float sparkRim = 1.0 - abs( dot( normalize( normal ), normalize( vViewPosition ) ) );
-		float sparkK = uSparkle * sparkGlint * ( 0.35 + 0.8 * sparkRim );
-		totalEmissiveRadiance += mix( vec3( 1.0 ), diffuseColor.rgb, 0.3 ) * sparkK;
+		// 帯が来ていないあいだも、ふちだけは常に明るくしておく。
+		// これが無いと「ときどき光るだけのプラスチック」になって金属に見えない
+		float sparkSheen = pow( sparkRim, 3.0 ) * 0.55;
+		float sparkK = uSparkle * ( sparkGlint * ( 0.6 + 1.5 * sparkRim ) + sparkSheen );
+		totalEmissiveRadiance += mix( vec3( 1.0 ), diffuseColor.rgb, 0.22 ) * sparkK;
 	}
 `;
 
@@ -450,7 +456,9 @@ export function makeSwordMaterial(
   // このシーンには環境マップが無いので metalness=1 の面は真っ黒になる。
   // 「玩具の金属色」として読める範囲まで金属感を落とし、そのぶん自発光で起こす
   const metalness = Math.min(skin.metalness, 0.6);
-  const emissiveK = Math.max(skin.emissive, skin.metalness * 0.28);
+  // 金属は地の明るさも上げておく。きらめきが来ていないコマで暗く沈むと、
+  // 「ときどき光る灰色の剣」になってしまう
+  const emissiveK = Math.max(skin.emissive, skin.metalness * 0.36);
 
   const mat = new THREE.MeshPhysicalMaterial({
     color: hex,

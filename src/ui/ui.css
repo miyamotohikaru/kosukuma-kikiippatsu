@@ -266,15 +266,16 @@
   color: rgba(255, 254, 242, 0.88);
   animation: feed-in 0.35s var(--spring) both;
 }
-/* 古い行ほど薄く */
+/* 古い行ほど薄く。ただし4行目が消えかけていると「チャットが流れている」
+   のではなく「バグで途切れている」ように見えるので、下限は残す */
 .feed-row:nth-child(2) {
-  opacity: 0.78;
+  opacity: 0.88;
 }
 .feed-row:nth-child(3) {
-  opacity: 0.56;
+  opacity: 0.76;
 }
 .feed-row:nth-child(4) {
-  opacity: 0.38;
+  opacity: 0.64;
 }
 .feed-flag {
   font-size: 14px;
@@ -2489,10 +2490,20 @@ button.kk-charm-btn:active .kk-charm-cell {
    既存の .feed / .feed-row / .feed-flag / .feed-win はそのまま使い、
    ここには足りない分だけを足す。古い行を薄くする nth-child より後ろに
    置いてあるので、.feed-fresh / .feed-live が上書きできる。 */
+/* 4行が宙に浮いていると、ただの通知の残りに見えて「チャット欄」と
+   認識されない。うっすらでも囲いを付けると、そこが読む場所だと分かる */
 .feed-wrap {
   display: flex;
   flex-direction: column;
   gap: 5px;
+  padding: 6px 8px 8px;
+  border-radius: 14px;
+  background: linear-gradient(
+    180deg,
+    rgba(5, 7, 26, 0.28),
+    rgba(5, 7, 26, 0.42)
+  );
+  border: 1px solid rgba(255, 254, 242, 0.1);
 }
 
 /* 「せかいの ようす」の見出し。ここが生きている画面だと分かる目印 */
