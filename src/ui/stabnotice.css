@@ -138,9 +138,41 @@
   }
 }
 
-/* せまい画面では上のアイコンが40pxになるので、その下に詰める */
+/* ── せまい画面 ──────────────────────────────────────
+   こすくまくんの吹き出しは頭の上に出るので、この窓と場所を取り合う。
+   まず窓を小さくして重なる面積を減らし、それでも重なるあいだ
+   (= しゃべっている数秒)は、こちらが引っこむ。 */
 @media (max-width: 430px) {
   .stabnotice {
-    top: calc(12px + env(safe-area-inset-top) + 46px);
+    top: calc(12px + env(safe-area-inset-top) + 44px);
+    width: min(50vw, 186px);
+    padding: 5px 6px 6px;
+    gap: 3px;
   }
+  .stabnotice-head {
+    font-size: 9px;
+  }
+  .stabnotice-list {
+    max-height: calc(var(--stab-rows, 2) * 22px);
+  }
+  .stabnotice-row {
+    padding: 3px 7px 3px 6px;
+    font-size: 9.5px;
+    gap: 4px;
+  }
+  .stabnotice-flag {
+    font-size: 10px;
+  }
+  .stabnotice-hole,
+  .stabnotice-ago {
+    font-size: 8.5px;
+  }
+  /* しゃべっている間はゆずる */
+  .stabnotice.is-shy {
+    opacity: 0;
+  }
+}
+
+.stabnotice {
+  transition: opacity 0.25s ease;
 }

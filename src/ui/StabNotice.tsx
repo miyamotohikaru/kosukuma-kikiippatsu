@@ -23,6 +23,7 @@ export default function StabNotice() {
   const myStabs = useGameStore((s) => s.myStabs);
   const remoteStabs = useGameStore((s) => s.remoteStabs);
   const phase = useGameStore((s) => s.phase);
+  const speech = useGameStore((s) => s.speech);
 
   // 「○びょう前」を進めるための時計。数行だけの軽い再描画
   const [now, setNow] = useState(() => Date.now());
@@ -35,9 +36,14 @@ export default function StabNotice() {
   const on = phase === "idle" || phase === "confirming";
   if (!on || recent.length === 0) return null;
 
+  // こすくまくんが しゃべっている間は、せまい画面でだけ引っこむ。
+  // 携帯だと吹き出しがこの窓の真下まで来て、どちらも読めなくなる。
+  // 消えるのは数秒だけで、記録はそのまま残っている
+  const shy = !!speech && speech.until > now;
+
   return (
     <div
-      className="stabnotice"
+      className={shy ? "stabnotice is-shy" : "stabnotice"}
       aria-hidden="true"
       style={{ ["--stab-rows" as string]: STAB_LOG_ROWS }}
     >

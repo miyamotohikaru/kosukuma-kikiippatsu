@@ -57,6 +57,19 @@ const CUP_STYLES: readonly CupStyle[] = [
   "orb",
   "column",
 ];
+
+// ── すでに世に出た代の姿を守るための、増やす前の並び ──────────────
+// くじは `pick(rng, 配列)` なので、**選択肢を増やすと目が動く**。
+// 第1〜3代はもうトロフィーホールに立っていて、その姿で覚えられているので、
+// この3代だけは増やす前の並びから引く。第4代からは増えたぶんも出る。
+const LEGACY_ROUNDS = 3;
+const CUP_STYLES_LEGACY: readonly CupStyle[] = [
+  "wine",
+  "urn",
+  "angular",
+  "dish",
+  "rocket",
+];
 const TOPPERS: readonly TopperKind[] = [
   "star",
   "moon",
@@ -67,6 +80,15 @@ const TOPPERS: readonly TopperKind[] = [
   "diamond",
   "crown",
   "ring",
+];
+const TOPPERS_LEGACY: readonly TopperKind[] = [
+  "star",
+  "moon",
+  "heart",
+  "rocket",
+  "planet",
+  "bear",
+  "diamond",
 ];
 
 /** 台座の1段(下から積む) */
@@ -571,7 +593,9 @@ export function getTrophyParams(roundNo: number, name: string): TrophyParams {
   const widthScale = randRange(rng, 0.85, 1.12);
 
   // ── カップ系統 ──
-  const cupStyle = pick(rng, CUP_STYLES);
+  // 第1〜3代はもう立っている姿があるので、増やす前の並びから引く
+  const legacy = roundNo <= LEGACY_ROUNDS;
+  const cupStyle = pick(rng, legacy ? CUP_STYLES_LEGACY : CUP_STYLES);
 
   // ── 台座 ──
   const baseShape: BaseShape = rng() < 0.55 ? "round" : "square";
@@ -635,7 +659,7 @@ export function getTrophyParams(roundNo: number, name: string): TrophyParams {
   const handleOffsetX = radiusAtY(profile, handleYLocal) + handleRadius * 0.8;
 
   // ── トッパー ──
-  let topper = pick(rng, TOPPERS);
+  let topper = pick(rng, legacy ? TOPPERS_LEGACY : TOPPERS);
   if (bearName) topper = "bear"; // 名前に「こすくま」が入っていたらくま確定
   if (superRare) topper = "diamond";
   // ロケット型は上が閉じているので少し高めに載せる
