@@ -2765,3 +2765,115 @@ button.kk-charm-btn:active .kk-charm-cell {
     animation: fade-in 0.3s ease both;
   }
 }
+
+/* ── 右上のアイコンが4つになったので、せまい画面では少し詰める ────────
+   44pxを4つ並べると、左の「第N代・みんなで N本」と取り合いになって
+   バッジが潰れる。指のあたりの下限(40px)までは詰めてよい。 */
+.icon-btn {
+  flex: 0 0 auto;
+}
+.hud-badges {
+  min-width: 0;
+}
+@media (max-width: 430px) {
+  .hud-top-right {
+    gap: 6px;
+  }
+  .icon-btn {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  }
+}
+
+/* ── フィードの「ぜんぶ みる」──────────────────────────────
+   見出しの右にちょこんと置く。流れる4行より目立ってはいけない
+   (主役は流れている中身で、これはその逃し口) */
+.feed-all {
+  pointer-events: auto;
+  margin-left: 2px;
+  padding: 2px 7px;
+  border: 1px solid rgba(255, 254, 242, 0.24);
+  border-radius: 999px;
+  background: rgba(5, 7, 26, 0.5);
+  color: rgba(255, 254, 242, 0.8);
+  font: inherit;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition:
+    transform 0.12s var(--spring),
+    background 0.14s ease;
+}
+.feed-all:active {
+  transform: scale(0.92);
+  background: rgba(5, 7, 26, 0.8);
+}
+
+/* ── 「せかいの ようす」の一覧(したく引き出しの器を借りている) ────── */
+.feedlog-list {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.feedlog-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #5d564b;
+  background: rgba(43, 38, 32, 0.04);
+}
+/* 引き出しの地はクリーム色。3D用の白い字のままだと読めないので、
+   自分の行・当たりの行の色だけここで置きなおす */
+.feedlog-row.feed-mine {
+  color: #a97d00;
+  background: rgba(245, 196, 0, 0.13);
+}
+.feedlog-row.feed-win {
+  color: #8a5a00;
+  background: linear-gradient(
+    90deg,
+    rgba(245, 196, 0, 0.26),
+    rgba(245, 196, 0, 0.08)
+  );
+}
+.feedlog-row .feed-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 3D の上に出す用の白い字のままだと、クリーム色の地では消えてしまう。
+   行の色を継いで、薄さだけ opacity で作る */
+.feedlog-row .feed-hole,
+.feedlog-row .feed-time {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 800;
+  color: inherit;
+  opacity: 0.5;
+  font-variant-numeric: tabular-nums;
+  text-shadow: none;
+}
+.feedlog-empty,
+.feedlog-note {
+  margin: 10px 2px 0;
+  font-size: 11px;
+  line-height: 1.7;
+  color: #8a7f6d;
+}
+.feedlog-empty {
+  margin: 22px 2px;
+  text-align: center;
+  font-size: 12px;
+}

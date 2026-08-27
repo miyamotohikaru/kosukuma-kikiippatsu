@@ -75,7 +75,34 @@ export default function GearDrawer({ open, onClose }: GearDrawerProps) {
         </div>
 
         <div className="kk-drawer-body">
+          {/* 名前はいちばん上。下に置いていたときは、剣を見に来た人の
+              目にまったく入らなかった。ここはスクロールしても残る場所なので、
+              「自分の名札」として常に見えているのがいい */}
           <section className="kk-sec kk-preview-sec">
+            <div className="nick nick-in-drawer">
+              <div className="nick-row">
+                <label className="nick-row-label" htmlFor="kk-nick-input">
+                  なまえ
+                </label>
+                <input
+                  id="kk-nick-input"
+                  className="nick-input"
+                  type="text"
+                  inputMode="text"
+                  autoComplete="off"
+                  maxLength={NAME_MAX_LEN}
+                  placeholder="ニックネーム(にんい)"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onBlur={() => setNickname(name)}
+                />
+              </div>
+              <span className="nick-preview nick-row-note">
+                {name.trim()
+                  ? `「${name.trim()}が 刺した」と のこるよ`
+                  : "いれると「だれかが」のかわりに 名前がのこるよ"}
+              </span>
+            </div>
             <SwordPreview />
           </section>
           <section className="kk-sec">
@@ -88,29 +115,6 @@ export default function GearDrawer({ open, onClose }: GearDrawerProps) {
           </section>
           <section className="kk-sec">
             <CharmShelf />
-          </section>
-          {/* 名前はタイトルで入れそびれる人が多いので、ここでも変えられる。
-              いちばん下でいい(剣を見に来た人の邪魔をしない) */}
-          <section className="kk-sec">
-            <p className="kk-sec-label">なまえ</p>
-            <div className="nick nick-in-drawer">
-              <input
-                className="nick-input"
-                type="text"
-                inputMode="text"
-                autoComplete="off"
-                maxLength={NAME_MAX_LEN}
-                placeholder="ニックネーム"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onBlur={() => setNickname(name)}
-              />
-              <span className="nick-preview">
-                {name.trim()
-                  ? `「${name.trim()}が 刺した」と のこるよ`
-                  : "いれると「だれかが」のかわりに 名前がのこるよ"}
-              </span>
-            </div>
           </section>
         </div>
       </div>

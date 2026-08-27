@@ -13,17 +13,8 @@
 
 import { useEffect, useState } from "react";
 import { useGameStore } from "@/game/store";
+import { feedLine, flagEmoji } from "./feedText";
 import "./ui.css";
-
-/** ISO 3166-1 alpha-2 → 国旗絵文字。不明・不正なら 🌍 */
-function flagEmoji(country: string | null): string {
-  if (!country || country.length !== 2) return "🌍";
-  const up = country.toUpperCase();
-  const a = up.charCodeAt(0) - 65;
-  const b = up.charCodeAt(1) - 65;
-  if (a < 0 || a > 25 || b < 0 || b > 25) return "🌍";
-  return String.fromCodePoint(0x1f1e6 + a, 0x1f1e6 + b);
-}
 
 /** どれくらい前か。サーバーと時計がずれて未来になっても「いま」に丸める */
 function agoLabel(at: string, now: number): string {
@@ -42,7 +33,12 @@ function agoLabel(at: string, now: number): string {
 /** 「いま起きたばかり」とみなす時間(ms)。この行は薄めない */
 const FRESH_MS = 6000;
 
-export default function Feed() {
+interface FeedProps {
+  /** 「ぜんぶ みる」を押したとき。記録の一覧をひらく */
+  onOpenLog: () => void;
+}
+
+export default function Feed({ onOpenLog }: FeedProps) {
   const recent = useGameStore((s) => s.recent);
   const myStabs = useGameStore((s) => s.myStabs);
   const remoteStabs = useGameStore((s) => s.remoteStabs);
@@ -59,9 +55,13 @@ export default function Feed() {
 
   return (
     <div className="feed-wrap">
-      <div className="feed-head" aria-hidden="true">
-        <span className="feed-live-dot" />
+      <div className="feed-head">
+        <span className="feed-live-dot" aria-hidden="true" />
         <span>せかいの ようす</span>
+        {/* 4行はすぐ押し流される。読み返したい人のための逃し口 */}
+        <button type="button" className="feed-all" onClick={onOpenLog}>
+          ぜんぶ みる
+        </button>
       </div>
       <div className="feed" aria-live="polite">
         {items.map((e) => {
@@ -77,17 +77,7 @@ export default function Feed() {
           else if (mine) cls.push("feed-mine");
           if (fresh || falling) cls.push("feed-fresh");
 
-          // 名前があれば、自分の行でもそれを主語にする。
-          // 自分だけ「きみ」にしていたら、名前が残っているのかどうかが
-          // 分からなかった。どれが自分かは行の色で分かる
-          const who = e.name || (mine ? "きみ" : null);
-          const text = e.win
-            ? "あたりを ひいた！！"
-            : falling
-              ? "いま 刺してる…"
-              : who
-                ? `${who}が 刺した`
-                : "だれかが 刺した";
+          const text = feedLine(e, mine, falling);
 
           return (
             <div key={`${e.at}-${e.holeId}`} className={cls.join(" ")}>

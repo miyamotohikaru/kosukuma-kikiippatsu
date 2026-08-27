@@ -72,3 +72,37 @@ export function base64ToU16(b64: string, length: number): Uint16Array {
   }
   return out;
 }
+
+/**
+ * Uint32Array を base64 に(リトルエンディアン、1要素4バイト)。
+ * チャームの「どれをつけているか」を穴ごとに配るのに使う(src/lib/style.ts)。
+ * ほとんどの穴は 0 なので、gzip 後の増分はごくわずかで済む。
+ */
+export function u32ToBase64(a: Uint32Array): string {
+  const bytes = new Uint8Array(a.length * 4);
+  for (let i = 0; i < a.length; i++) {
+    const v = a[i];
+    bytes[i * 4] = v & 0xff;
+    bytes[i * 4 + 1] = (v >>> 8) & 0xff;
+    bytes[i * 4 + 2] = (v >>> 16) & 0xff;
+    bytes[i * 4 + 3] = (v >>> 24) & 0xff;
+  }
+  return maskToBase64(bytes);
+}
+
+/** u32ToBase64 の逆。長さが足りなければ 0 で埋める */
+export function base64ToU32(b64: string, length: number): Uint32Array {
+  const out = new Uint32Array(length);
+  if (!b64) return out;
+  const bytes = base64ToMask(b64);
+  const n = Math.min(length, bytes.length >> 2);
+  for (let i = 0; i < n; i++) {
+    out[i] =
+      (bytes[i * 4] |
+        (bytes[i * 4 + 1] << 8) |
+        (bytes[i * 4 + 2] << 16) |
+        (bytes[i * 4 + 3] << 24)) >>>
+      0;
+  }
+  return out;
+}

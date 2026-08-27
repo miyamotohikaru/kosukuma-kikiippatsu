@@ -277,6 +277,9 @@ export default function Kosukuma() {
     act.current.kind = -1;
 
     emitGameEvent("kosukuma-poke");
+    // つついた回数は store が数える(1万回で隠しチャームが開く)。
+    // 条件はどこにも書かない — 地球のイースターエッグと同じ約束
+    useGameStore.getState().pokeKosukuma();
   };
 
   // ── ポインタ操作(作法は Earth.tsx のイースターエッグと同じ) ──

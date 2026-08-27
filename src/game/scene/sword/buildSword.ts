@@ -384,9 +384,40 @@ const IRIDESCENT_CHUNK = /* glsl */ `
 	{
 		vec3 iriView = normalize( vViewPosition );
 		float iriEdge = 1.0 - abs( dot( normalize( normal ), iriView ) );
-		float iriHue = fract( iriEdge * 1.15 + uIriTime * 0.045 );
+		float iriHue = fract( iriEdge * 1.15 + uSwordTime * 0.045 );
 		vec3 iriColor = 0.5 + 0.5 * cos( 6.28318 * ( iriHue + vec3( 0.0, 0.33, 0.67 ) ) );
 		diffuseColor.rgb = mix( diffuseColor.rgb, iriColor, 0.92 );
+	}
+`;
+
+// ── きらめき ────────────────────────────────────────
+// ぎん・きんは「色が違うだけの剣」に見えて、他の人の画面ではノーマルと
+// 区別がつかなかった。原因は、このシーンに環境マップが無いこと。
+// 金属や宝石を金属らしく見せているのは **動く反射** なので、
+// 環境マップの代わりに「刃を根元から先へ流れる細い光の帯」を自前で足す。
+//
+// 帯の位相は剣ごとにずらす(1000本が同時に光ると、画面全体が明滅して
+// 何が起きたのか分からなくなる)。位相は刺さっている場所から作るので、
+// 誰の画面でも同じ剣が同じタイミングで光る。
+const SPARKLE_VERTEX_CHUNK = /* glsl */ `
+	vSparkleY = position.y;
+	#ifdef USE_INSTANCING
+		vSparkleSeed = fract( sin( dot( instanceMatrix[ 3 ].xyz, vec3( 12.9898, 78.233, 37.719 ) ) ) * 43758.5453 );
+	#else
+		vSparkleSeed = 0.0;
+	#endif
+`;
+
+const SPARKLE_CHUNK = /* glsl */ `
+	{
+		// 刃を上へ流れる細い帯。pow でとがらせて「すっと通る光」にする
+		// 帯は細く。太いと「刃の半分が白い板」に見えて、光ではなく描画のバグに見える
+		float sparkBand = sin( vSparkleY * 11.0 - uSwordTime * 1.9 + vSparkleSeed * 6.28318 );
+		float sparkGlint = pow( max( sparkBand, 0.0 ), 22.0 );
+		// ふちほど強い(金属の反射は輪郭に出る)。まん中だけ光ると板に見える
+		float sparkRim = 1.0 - abs( dot( normalize( normal ), normalize( vViewPosition ) ) );
+		float sparkK = uSparkle * sparkGlint * ( 0.35 + 0.8 * sparkRim );
+		totalEmissiveRadiance += mix( vec3( 1.0 ), diffuseColor.rgb, 0.3 ) * sparkK;
 	}
 `;
 
@@ -437,31 +468,48 @@ export function makeSwordMaterial(
   });
 
   const uSwordEmissive = { value: emissiveK };
-  const uIriTime = { value: 0 };
-  if (skin.iridescent) mat.userData.iriTime = uIriTime;
+  const uSwordTime = { value: 0 };
+  const uSparkle = { value: skin.sparkle ?? 0 };
+  const animated = skin.iridescent || (skin.sparkle ?? 0) > 0;
+  // 毎フレーム時計を進めてほしいスキンだけ、更新先を userData に置いておく
+  if (animated) mat.userData.iriTime = uSwordTime;
 
+  const sparkly = (skin.sparkle ?? 0) > 0;
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uSwordEmissive = uSwordEmissive;
-    if (skin.iridescent) shader.uniforms.uIriTime = uIriTime;
+    if (animated) shader.uniforms.uSwordTime = uSwordTime;
+    if (sparkly) {
+      shader.uniforms.uSparkle = uSparkle;
+      shader.vertexShader =
+        `varying float vSparkleY;\nvarying float vSparkleSeed;\n` +
+        shader.vertexShader.replace(
+          "#include <begin_vertex>",
+          `#include <begin_vertex>\n` + SPARKLE_VERTEX_CHUNK
+        );
+    }
     shader.fragmentShader =
       `uniform float uSwordEmissive;\n` +
-      (skin.iridescent ? `uniform float uIriTime;\n` : "") +
+      (animated ? `uniform float uSwordTime;\n` : "") +
+      (sparkly
+        ? `uniform float uSparkle;\nvarying float vSparkleY;\nvarying float vSparkleSeed;\n`
+        : "") +
       shader.fragmentShader.replace(
         "#include <normal_fragment_maps>",
         // normal と diffuseColor が両方そろっている場所へ差し込む
         `#include <normal_fragment_maps>\n` +
           (skin.iridescent ? IRIDESCENT_CHUNK : "") +
+          (sparkly ? SPARKLE_CHUNK : "") +
           SELF_EMISSIVE_CHUNK
       );
   };
   // 差し込む中身がスキンで変わるので、プログラムキャッシュを分ける
   mat.customProgramCacheKey = () =>
-    `toy-sword-${skin.iridescent ? "iri" : "solid"}`;
+    `toy-sword-${skin.iridescent ? "iri" : "solid"}-${sparkly ? "spk" : "flat"}`;
 
   return mat;
 }
 
-/** にじいろの色相をすすめる(毎フレーム呼ぶ)。他のスキンでは何もしない */
+/** にじいろ・きらめきの時計をすすめる(毎フレーム呼ぶ)。他のスキンでは何もしない */
 export function tickSwordMaterial(mat: THREE.Material, t: number): void {
   const u = mat.userData.iriTime as { value: number } | undefined;
   if (u) u.value = t;

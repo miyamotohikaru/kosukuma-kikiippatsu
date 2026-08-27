@@ -844,6 +844,48 @@ function buildBear(bag: Bag): void {
   for (const it of bag) xf(it.geo, undefined, undefined, BEAR_FIT);
 }
 
+/**
+ * こすくまくんの かお(隠し。1万回つついた人だけ)。
+ * 全身チャームの「あたま + みみ」だけを取り出して、同じ背丈まで大きくしたもの。
+ * 全身をただ縮めた粒とは別物に見えるように、目と口はその分だけ大きく残る。
+ */
+const FACE_FIT = 1.42;
+
+function buildBearFace(bag: Bag): void {
+  for (const s of [-1, 1]) {
+    // みみ(あたまの後ろへ)
+    bearBlob(bag, s * 0.268, 0.215, -0.09, 0.135, 0.135, 0.055, 6, 5);
+  }
+  // あたま。全身では むね へ続いていた裾を、顔だけなので まるく閉じる
+  bearLobe(
+    bag,
+    squirclePoints(0, 0, 0.315, 0.305, 0.85, 0.72, 0.03),
+    BEAR_HEAD_Z,
+    BEAR_HEAD_T,
+    22,
+    16
+  );
+  for (const s of [-1, 1]) {
+    put(
+      bag,
+      xf(ball(0.027, 6), [s * 0.073, -0.092, BEAR_HEAD_Z + BEAR_HEAD_T * 0.94]),
+      "accent"
+    );
+  }
+  const mouth = new THREE.ConeGeometry(0.032, 0.03, 3);
+  put(
+    bag,
+    xf(
+      mouth,
+      [0, -0.137, BEAR_HEAD_Z + BEAR_HEAD_T * 0.92],
+      [0, 0, Math.PI],
+      [1, 1, 0.5]
+    ),
+    "accent"
+  );
+  for (const it of bag) xf(it.geo, undefined, undefined, FACE_FIT);
+}
+
 // ── 隠しチャーム「ちきゅう」────────────────────────────────
 // 地球を1000回つついて こわした人だけが手に入れる。
 // ただの青い玉だと何だか分からないので、**小さな地球そのもの** にして、
@@ -1259,6 +1301,9 @@ export function makeCharmParts(shape: CharmShape, size = 0.085): CharmBuild {
       return finish(bag, size, { anchorX: 0, bail: 0.1 });
     case "bear":
       buildBear(bag);
+      return finish(bag, size);
+    case "bearface":
+      buildBearFace(bag);
       return finish(bag, size);
     case "earth":
       buildEarth(bag);

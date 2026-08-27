@@ -64,13 +64,19 @@ export interface SwordSkin {
   opacity: number;
   /** 見る角度で色が動く(にじいろ) */
   iridescent: boolean;
+  /**
+   * きらめきの強さ(0=なし)。刃の上を光の帯がゆっくり流れる。
+   * ぎん・きんは「色を変えただけの剣」に見えて、他の人から違いが分からなかった。
+   * 金属や宝石は"動く反射"でそれと分かるものなので、遠景でも動きで見分けられるようにした。
+   */
+  sparkle: number;
   /** UIのラベルにそえる小さな絵文字 */
   emoji: string;
 }
 
 export const SWORD_SKINS: readonly SwordSkin[] = [
   {
-    name: "プラスチック",
+    name: "ノーマル",
     needWins: 0,
     tinted: true,
     hex: "#ffd93d",
@@ -81,6 +87,7 @@ export const SWORD_SKINS: readonly SwordSkin[] = [
     emissive: 0.2,
     opacity: 1,
     iridescent: false,
+    sparkle: 0,
     emoji: "🗡",
   },
   {
@@ -93,6 +100,7 @@ export const SWORD_SKINS: readonly SwordSkin[] = [
     emissive: 0.05,
     opacity: 1,
     iridescent: false,
+    sparkle: 1,
     emoji: "🥈",
   },
   {
@@ -105,6 +113,7 @@ export const SWORD_SKINS: readonly SwordSkin[] = [
     emissive: 0.1,
     opacity: 1,
     iridescent: false,
+    sparkle: 1,
     emoji: "🥇",
   },
   {
@@ -117,6 +126,7 @@ export const SWORD_SKINS: readonly SwordSkin[] = [
     emissive: 0.34,
     opacity: 0.58,
     iridescent: false,
+    sparkle: 0.85,
     emoji: "💠",
   },
   {
@@ -129,6 +139,7 @@ export const SWORD_SKINS: readonly SwordSkin[] = [
     emissive: 0.22,
     opacity: 1,
     iridescent: true,
+    sparkle: 1,
     emoji: "🌈",
   },
 ] as const;
@@ -157,7 +168,9 @@ export type CharmShape =
   | "comet" // ながれぼし
   | "rocket" // ロケット
   | "satellite" // じんこうえいせい
-  | "ufo"; // UFO
+  | "ufo" // UFO
+  // ── こすくまくんを つつきつづけた人だけ ──
+  | "bearface"; // こすくまくんの かお(隠し)
 
 /** チャームの素材。見た目(金属感・透け・つや)を決める */
 export type CharmMaterial =
@@ -343,7 +356,27 @@ export const CHARMS: readonly Charm[] = [
     material: "chrome",
     secret: true,
   },
+  // ── こすくまくんを POKE_CHARM_NEED 回つついた人だけ ──
+  // 300本の「こすくまくん」チャームは全身。こちらは顔だけを大きく抜いた別物で、
+  // 並べたときに一目で違うものだと分かるようにしてある。
+  {
+    need: Infinity,
+    name: "こすくまくんの かお",
+    emoji: "🐻",
+    shape: "bearface",
+    hex: "#fdf7c1",
+    accentHex: "#2b2620",
+    material: "resin",
+    secret: true,
+  },
 ] as const;
+
+/**
+ * 剣に同時につけられるチャームの数。
+ * 全部つけると房が長くなりすぎて、剣がチャームに埋もれてしまう。
+ * 「どれを見せるか選ぶ」のがコレクションの楽しみになる数として10。
+ */
+export const MAX_EQUIPPED_CHARMS = 10;
 
 /** 刺して手に入るチャームの数(= 隠しチャームを除いた本数)。棚の分母にもなる */
 export const NORMAL_CHARM_COUNT = CHARMS.filter((c) => !c.secret).length;
@@ -381,6 +414,13 @@ export function skyCharmLevelOf(catches: number): number {
   }
   return n;
 }
+
+// ── こすくまくんを つつく ────────────────────────────
+/** こすくまくんを通算で何回つついたら「かお」のチャームが開くか */
+export const POKE_CHARM_NEED = 10000;
+
+/** つつきで手に入る隠しチャーム(CHARMS の index) */
+export const POKE_CHARM_INDEX = CHARMS.findIndex((c) => c.shape === "bearface");
 
 /** 空のものが飛んでくる間隔(ms)。この幅でランダムに次が決まる */
 export const SKY_GAP_MS: [number, number] = [9000, 22000];

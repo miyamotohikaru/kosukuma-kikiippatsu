@@ -14,6 +14,9 @@ import {
   SKY_CATCH_NEED,
   EARTH_BOOM_CLICKS,
   HOLE_COUNT,
+  MAX_EQUIPPED_CHARMS,
+  POKE_CHARM_INDEX,
+  POKE_CHARM_NEED,
   NAME_MAX_LEN,
   SKY_CHARM_INDEX,
   SKY_KINDS,
@@ -36,11 +39,18 @@ import {
 import {
   base64ToMask,
   base64ToU16,
+  base64ToU32,
   emptyMask,
   getBit,
   maskToBase64,
 } from "@/lib/bitmask";
-import { charmOf, packStyle, skinOf } from "@/lib/style";
+import {
+  charmIndicesFor,
+  charmOf,
+  packCharmSet,
+  packStyle,
+  skinOf,
+} from "@/lib/style";
 import type {
   ClaimResponse,
   StabResult,
@@ -87,8 +97,10 @@ export interface RemoteStab {
   color: number;
   /** SWORD_SKINS の index */
   skin: number;
-  /** ぶら下がっているチャームの数 */
+  /** ぶら下がっているチャームの数(古い記録のとき用) */
   charm: number;
+  /** ぶら下がっているチャーム(CHARMS の index)。これが正 */
+  charms: number[];
   /** 再生開始時刻(epoch ms)。同時到着ぶんは REMOTE_STAGGER ずつずらす */
   startAt: number;
 }
@@ -118,11 +130,19 @@ interface GameState {
   stabColors: Uint8Array;
   /** 各穴の剣のスキン+チャーム(詰め方は src/lib/style.ts)。0=情報なし */
   stabStyles: Uint16Array;
+  /** 各穴の「つけていたチャームの一覧」(src/lib/style.ts)。0=記録なし */
+  stabCharms: Uint32Array;
   recent: StateResponse["recent"];
   prevWinner: WinnerInfo | null;
   connected: boolean;
   /** いま「刺さる瞬間」を再生中の、他の人の剣 */
   remoteStabs: RemoteStab[];
+  /**
+   * `RemoteStabs` が実際に受け持った穴。**`Swords` が隠すのはこれだけ。**
+   * 順番待ちの穴まで隠していたので、混んでいるとき(や自分のカットシーン中)に
+   * 「誰も描かない穴」が生まれて、刺さっているはずの剣が消えて見えていた。
+   */
+  playingStabs: number[];
 
   // ── 自分の操作 ──
   selectedHole: number | null;
@@ -195,6 +215,18 @@ interface GameState {
    */
   nickname: string | null;
 
+  /**
+   * これまでに流れてきた刺しの記録(新しい順・最大 FEED_LOG_MAX 件)。
+   * サーバーが返すのは直近12件だけなので、見ているあいだのぶんを
+   * この端末に貯めて「ぜんぶ みる」で読み返せるようにしている。
+   */
+  feedLog: StateResponse["recent"];
+
+  /** こすくまくんを つついた回数(この端末) */
+  pokeCount: number;
+  /** つつきの隠しチャームを持っているか */
+  hasPokeCharm: boolean;
+
   /** こすくまくんの吹き出し */
   speech: Speech | null;
 
@@ -214,6 +246,8 @@ interface GameState {
   setSwordSkin: (s: number) => void;
   /** チャームのつけ外し。持っていないものは無視される */
   toggleCharm: (index: number) => void;
+  /** その穴の演出を `RemoteStabs` が受け持った(`Swords` は描かない) */
+  claimRemoteStab: (holeId: number) => void;
   /** 演出が終わった他人の剣を、通常の剣(Swords)へ引き渡す */
   endRemoteStab: (holeId: number) => void;
   /** チャーム獲得演出をとじる */
@@ -228,6 +262,8 @@ interface GameState {
   catchSky: (kind: number) => void;
   /** ニックネームを決める。空文字なら未登録に戻す */
   setNickname: (name: string) => void;
+  /** こすくまくんを つついた。POKE_CHARM_NEED 回で隠しチャームが開く */
+  pokeKosukuma: () => void;
   /** こすくまくんにしゃべらせる */
   say: (text: string, tone?: SpeechTone, ms?: number) => void;
 }
@@ -321,6 +357,7 @@ function demoWatchState(cur: {
     holesBase64: maskToBase64(emptyMask()),
     stabColorsBase64: "",
     stabStylesBase64: "",
+    stabCharmsBase64: "",
     recent: cur.recent,
     prevWinner: {
       roundNo: round,
@@ -365,6 +402,7 @@ export function ownedCharms(
   myTotal: number,
   earth: boolean,
   caughtSky = 0,
+  poke = false,
 ): number[] {
   const out: number[] = [];
   for (let i = 0; i < charmLevelOf(myTotal); i++) out.push(i);
@@ -373,6 +411,7 @@ export function ownedCharms(
     const ci = SKY_CHARM_INDEX[i];
     if (caughtSky & (1 << i) && ci >= 0) out.push(ci);
   }
+  if (poke && POKE_CHARM_INDEX >= 0) out.push(POKE_CHARM_INDEX);
   return out;
 }
 
@@ -394,15 +433,20 @@ function loadEquipped(): number[] {
   }
 }
 
-/** 未保存(=一度もつけ外ししていない)なら、持っているもの全部を既定にする */
+/**
+ * 未保存(=一度もつけ外ししていない)なら、持っているぶんを既定でつけておく。
+ * ただし上限があるので、あふれるときは**新しい方**を残す
+ * (せっかく手に入れたばかりのチャームが、上限のせいで出てこないのを避ける)。
+ */
 function defaultEquipped(
   myTotal: number,
   earth: boolean,
   caughtSky = 0,
+  poke = false,
 ): number[] {
-  return LS.get("kk-charms") === null
-    ? ownedCharms(myTotal, earth, caughtSky)
-    : [];
+  if (LS.get("kk-charms") !== null) return [];
+  const owned = ownedCharms(myTotal, earth, caughtSky, poke);
+  return owned.slice(-MAX_EQUIPPED_CHARMS);
 }
 
 /** とばした回数から、いま使えるスキンのindex一覧 */
@@ -466,13 +510,19 @@ function applyPreviewParams(set: (p: Partial<GameState>) => void): void {
     );
     const skyCatches = skyWant === 0 ? 0 : SKY_CATCH_NEED[skyWant - 1];
     const sky = skyMask(skyCatches);
+    // 空のぶんより後ろは「こすくまくんを1万回つついた人」のチャーム
+    const poke = want > NORMAL_CHARM_COUNT + 1 + SKY_KINDS.length;
     set({
       myTotal: total,
       hasEarthCharm: earth,
       skyCatches,
       caughtSky: sky,
-      // 見せるための状態なので、つけ外しの保存は無視して全部つけた姿にする
-      equippedCharms: ownedCharms(total, earth, sky),
+      pokeCount: poke ? POKE_CHARM_NEED : 0,
+      hasPokeCharm: poke,
+      // 見せるための状態なので、つけ外しの保存は無視して上限までつけた姿にする
+      equippedCharms: ownedCharms(total, earth, sky, poke).slice(
+        -MAX_EQUIPPED_CHARMS,
+      ),
     });
   }
 
@@ -482,6 +532,9 @@ function applyPreviewParams(set: (p: Partial<GameState>) => void): void {
     set({ myWins: wins });
   }
 }
+
+/** 端末に貯める刺しの記録の上限。多すぎても読めないので、これくらいで足りる */
+const FEED_LOG_MAX = 120;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -503,7 +556,8 @@ export const useGameStore = create<GameState>((set, get) => {
     cur: GameState,
     rawMask: Uint8Array,
     colors: Uint8Array,
-    styles: Uint16Array
+    styles: Uint16Array,
+    charmSets: Uint32Array
   ): RemoteStab[] => {
     const now = Date.now();
     // 取りこぼしの保険: 演出コンポーネントが外れた等で残った古い分は畳む
@@ -530,6 +584,7 @@ export const useGameStore = create<GameState>((set, get) => {
         color: c > 0 && c <= SWORD_COLORS.length ? c - 1 : 0,
         skin: skinOf(style),
         charm: charmOf(style),
+        charms: charmIndicesFor(style, charmSets[holeId]),
         startAt: at,
       });
       at += REMOTE_STAGGER;
@@ -537,13 +592,30 @@ export const useGameStore = create<GameState>((set, get) => {
     return added.length > 0 ? [...alive, ...added] : alive;
   };
 
-  /** 手に入れたばかりのチャームを、つけた状態にする(既についていれば何もしない) */
+  /**
+   * 手に入れたばかりのチャームを、つけた状態にする。
+   * いっぱいのときは勝手に外さない(何が外れたか分からないのがいちばん困る)。
+   * 手に入れたこと自体は獲得演出が伝えるので、つけ替えは本人にまかせる。
+   */
   const equipCharm = (index: number) => {
     const cur = get().equippedCharms;
     if (cur.includes(index)) return;
+    if (cur.length >= MAX_EQUIPPED_CHARMS) return;
     const next = [...cur, index].sort((a, b) => a - b);
     LS.set("kk-charms", JSON.stringify(next));
     set({ equippedCharms: next });
+  };
+
+  /** 流れてきた刺しを、この端末の記録へ足す(新しい順・重複はしない) */
+  const mergeFeedLog = (
+    log: StateResponse["recent"],
+    incoming: StateResponse["recent"]
+  ): StateResponse["recent"] => {
+    const key = (e: StateResponse["recent"][number]) => `${e.at}-${e.holeId}`;
+    const seen = new Set(log.map(key));
+    const fresh = incoming.filter((e) => !seen.has(key(e)));
+    if (fresh.length === 0) return log;
+    return [...fresh, ...log].slice(0, FEED_LOG_MAX);
   };
 
   /** サーバー状態を表示へ反映 */
@@ -558,13 +630,18 @@ export const useGameStore = create<GameState>((set, get) => {
     const styles = s.stabStylesBase64
       ? base64ToU16(s.stabStylesBase64, HOLE_COUNT)
       : new Uint16Array(HOLE_COUNT);
+    const charmSets = s.stabCharmsBase64
+      ? base64ToU32(s.stabCharmsBase64, HOLE_COUNT)
+      : new Uint32Array(HOLE_COUNT);
     let stabCount = s.stabCount;
     let remoteStabs: RemoteStab[] = [];
     if (s.roundNo === cur.roundNo) {
       // 初回ロード(roundNo=0からの立ち上がり)は既存の1000本が一気に
       // 降ってくることになるので、2回目以降の差分だけを演出する
       remoteStabs =
-        cur.roundNo > 0 ? queueRemote(cur, mask, colors, styles) : cur.remoteStabs;
+        cur.roundNo > 0
+          ? queueRemote(cur, mask, colors, styles, charmSets)
+          : cur.remoteStabs;
       // 同一ラウンド内でビットが消えることはない。自分の刺した直後に
       // 数秒古いキャッシュ応答が来ても剣(と色)が消えないよう和集合をとる
       const old = cur.mask;
@@ -577,6 +654,10 @@ export const useGameStore = create<GameState>((set, get) => {
       for (let i = 0; i < styles.length && i < oldS.length; i++) {
         if (styles[i] === 0) styles[i] = oldS[i];
       }
+      const oldK = cur.stabCharms;
+      for (let i = 0; i < charmSets.length && i < oldK.length; i++) {
+        if (charmSets[i] === 0) charmSets[i] = oldK[i];
+      }
       stabCount = Math.max(stabCount, cur.stabCount);
     }
     // ラウンドが変わったら「この代の自分の刺し」を読み直す(通常は空)
@@ -588,9 +669,11 @@ export const useGameStore = create<GameState>((set, get) => {
       mask,
       stabColors: colors,
       stabStyles: styles,
+      stabCharms: charmSets,
       remoteStabs,
       myStabs,
       recent: s.recent,
+      feedLog: mergeFeedLog(cur.feedLog, s.recent),
       prevWinner: s.prevWinner,
       connected: true,
     });
@@ -757,6 +840,8 @@ export const useGameStore = create<GameState>((set, get) => {
   const initialEarthCharm = LS.get("kk-earth-charm") === "1";
   const initialSkyCatches = Math.max(0, Number(LS.get("kk-sky-n") ?? 0) || 0);
   const initialCaughtSky = skyMask(initialSkyCatches);
+  const initialPokes = Math.max(0, Number(LS.get("kk-poke-n") ?? 0) || 0);
+  const initialPokeCharm = LS.get("kk-poke-charm") === "1";
 
   return {
     phase: "boot",
@@ -766,10 +851,12 @@ export const useGameStore = create<GameState>((set, get) => {
     mask: emptyMask(),
     stabColors: new Uint8Array(HOLE_COUNT),
     stabStyles: new Uint16Array(HOLE_COUNT),
+    stabCharms: new Uint32Array(HOLE_COUNT),
     recent: [],
     prevWinner: null,
     connected: true,
     remoteStabs: [],
+    playingStabs: [],
     selectedHole: null,
     hoveredHole: null,
     cooldownUntil: 0,
@@ -799,15 +886,25 @@ export const useGameStore = create<GameState>((set, get) => {
     earthBooms: Math.max(0, Number(LS.get("kk-earth-booms") ?? 0) || 0),
     hasEarthCharm: LS.get("kk-earth-charm") === "1",
     // 一度もつけ外ししていない人は「持っているもの全部」がついている状態
+    // 端末に残った設定が上限より長いことがある(上限を入れる前の人)。
+    // 表示側でも切るが、ここでも新しい方から MAX_EQUIPPED_CHARMS 個に丸めておく
     equippedCharms: [
       ...loadEquipped(),
-      ...defaultEquipped(initialTotal, initialEarthCharm, initialCaughtSky),
-    ],
+      ...defaultEquipped(
+        initialTotal,
+        initialEarthCharm,
+        initialCaughtSky,
+        initialPokeCharm
+      ),
+    ].slice(-MAX_EQUIPPED_CHARMS),
     earthBoomAt: null,
     skyCatches: initialSkyCatches,
     skyPop: null,
     caughtSky: initialCaughtSky,
     nickname: (LS.get("kk-nick") || "").slice(0, NAME_MAX_LEN) || null,
+    feedLog: [],
+    pokeCount: initialPokes,
+    hasPokeCharm: initialPokeCharm,
     speech: null,
 
     init: () => {
@@ -909,6 +1006,20 @@ export const useGameStore = create<GameState>((set, get) => {
         }
       }
       const styleNow = packStyle(cur.swordSkin, charmNow, earthOn, skyOn);
+      // 「どれをつけたか」は数では表せないので、一覧そのものも送る。
+      // 持っていないものが端末の設定に残っていることがあるので、必ず交差させる
+      const ownedNow = new Set(
+        ownedCharms(
+          cur.myTotal,
+          cur.hasEarthCharm,
+          cur.caughtSky,
+          cur.hasPokeCharm
+        )
+      );
+      const charmList = equipped
+        .filter((i) => ownedNow.has(i))
+        .slice(0, MAX_EQUIPPED_CHARMS);
+      const charmSetNow = packCharmSet(charmList);
       const body = JSON.stringify({
         holeId,
         roundNo: cur.roundNo,
@@ -918,6 +1029,7 @@ export const useGameStore = create<GameState>((set, get) => {
         charm: charmNow,
         earthCharm: earthOn,
         skyCharms: skyOn,
+        charms: charmList,
         nickname: cur.nickname ?? undefined,
       });
 
@@ -967,6 +1079,8 @@ export const useGameStore = create<GameState>((set, get) => {
           colors[holeId] = cur.swordColor + 1;
           const styles = new Uint16Array(get().stabStyles);
           styles[holeId] = styleNow;
+          const charmSets = new Uint32Array(get().stabCharms);
+          charmSets[holeId] = charmSetNow;
           const myStabs = [...get().myStabs, holeId];
           const myTotal = get().myTotal + 1;
           saveMyStabs(cur.roundNo, myStabs);
@@ -983,6 +1097,7 @@ export const useGameStore = create<GameState>((set, get) => {
             stabCount: result.stabCount,
             stabColors: colors,
             stabStyles: styles,
+            stabCharms: charmSets,
             myStabs,
             myTotal,
             cooldownUntil: until,
@@ -1213,9 +1328,20 @@ export const useGameStore = create<GameState>((set, get) => {
 
     toggleCharm: (index: number) => {
       const cur = get();
-      const owned = ownedCharms(cur.myTotal, cur.hasEarthCharm, cur.caughtSky);
+      const owned = ownedCharms(
+        cur.myTotal,
+        cur.hasEarthCharm,
+        cur.caughtSky,
+        cur.hasPokeCharm
+      );
       if (!owned.includes(index)) return; // 持っていないものはつけられない
       const on = cur.equippedCharms.includes(index);
+      if (!on && cur.equippedCharms.length >= MAX_EQUIPPED_CHARMS) {
+        // 勝手に外して入れ替えない。何が外れたか分からないほうが困る
+        cur.showToast(`チャームは ${MAX_EQUIPPED_CHARMS}こまで！`);
+        emitGameEvent("error");
+        return;
+      }
       const next = on
         ? cur.equippedCharms.filter((i) => i !== index)
         : [...cur.equippedCharms, index].sort((a, b) => a - b);
@@ -1224,10 +1350,25 @@ export const useGameStore = create<GameState>((set, get) => {
       set({ equippedCharms: next });
     },
 
+    claimRemoteStab: (holeId: number) => {
+      const cur = get();
+      if (cur.playingStabs.includes(holeId)) return;
+      set({ playingStabs: [...cur.playingStabs, holeId] });
+    },
+
     endRemoteStab: (holeId: number) => {
       const cur = get();
-      if (!cur.remoteStabs.some((r) => r.holeId === holeId)) return;
-      set({ remoteStabs: cur.remoteStabs.filter((r) => r.holeId !== holeId) });
+      const inQueue = cur.remoteStabs.some((r) => r.holeId === holeId);
+      const inPlay = cur.playingStabs.includes(holeId);
+      if (!inQueue && !inPlay) return;
+      set({
+        remoteStabs: inQueue
+          ? cur.remoteStabs.filter((r) => r.holeId !== holeId)
+          : cur.remoteStabs,
+        playingStabs: inPlay
+          ? cur.playingStabs.filter((h) => h !== holeId)
+          : cur.playingStabs,
+      });
     },
 
     clearNewCharm: () => {
@@ -1300,6 +1441,23 @@ export const useGameStore = create<GameState>((set, get) => {
         set({ newCharm: ci });
         emitGameEvent("charm-get");
       }
+    },
+
+    pokeKosukuma: () => {
+      const cur = get();
+      if (cur.hasPokeCharm) return; // もう持っている人は数えなくていい
+      const n = cur.pokeCount + 1;
+      LS.set("kk-poke-n", String(n));
+      if (n < POKE_CHARM_NEED || POKE_CHARM_INDEX < 0) {
+        set({ pokeCount: n });
+        return;
+      }
+      // 1万回。地球の爆発と同じで、条件はどこにも書かれていない
+      LS.set("kk-poke-charm", "1");
+      set({ pokeCount: n, hasPokeCharm: true });
+      equipCharm(POKE_CHARM_INDEX);
+      set({ newCharm: POKE_CHARM_INDEX });
+      emitGameEvent("charm-get");
     },
 
     setNickname: (name: string) => {

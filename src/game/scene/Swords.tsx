@@ -17,7 +17,7 @@ import { useFrame } from "@react-three/fiber";
 import { CHARMS, HOLE_COUNT, SWORD_COLORS, SWORD_SKINS } from "@/lib/config";
 import { getBit } from "@/lib/bitmask";
 import { getHolePoints } from "@/lib/holes";
-import { charmIndicesOf, skinOf } from "@/lib/style";
+import { charmIndicesFor, skinOf } from "@/lib/style";
 import { useGameStore } from "@/game/store";
 import { makeCircleTexture } from "@/game/scene/effects/textures";
 import {
@@ -115,9 +115,10 @@ export default function Swords() {
   const mask = useGameStore((s) => s.mask);
   const stabColors = useGameStore((s) => s.stabColors);
   const stabStyles = useGameStore((s) => s.stabStyles);
+  const stabCharms = useGameStore((s) => s.stabCharms);
   const myStabs = useGameStore((s) => s.myStabs);
   const swordColor = useGameStore((s) => s.swordColor);
-  const remoteStabs = useGameStore((s) => s.remoteStabs);
+  const playingStabs = useGameStore((s) => s.playingStabs);
 
   const points = useMemo(() => getHolePoints(), []);
   const geometry = useMemo(() => makeToySwordGeometry("field"), []);
@@ -157,13 +158,15 @@ export default function Swords() {
     };
   }, [geometry, beadGeometry, materials, beadMaterial]);
 
-  // いま「降ってきて刺さる」演出の最中の穴。ここでは描かない(二重に見せない)
+  // いま「降ってきて刺さる」演出を **実際に受け持っている** 穴だけ、ここでは
+  // 描かない(二重に見せない)。順番待ちのぶんまで隠すと、混んでいるときに
+  // 「どちらも描かない穴」ができて、刺さっている剣が消えて見えてしまう
   const hidden = useMemo(
-    () => new Set(remoteStabs.map((r) => r.holeId)),
-    [remoteStabs]
+    () => new Set(playingStabs),
+    [playingStabs]
   );
 
-  // この代に実在するスキンだけメッシュを出す(ふだんは プラスチック1本で済む)
+  // この代に実在するスキンだけメッシュを出す(ふだんは ノーマル1本で済む)
   const presentSkins = useMemo(() => {
     let bits = 0;
     for (let id = 0; id < HOLE_COUNT; id++) {
@@ -211,7 +214,7 @@ export default function Swords() {
       // チャームは鍔の下のビーズ1個にまとめる。何を持っているかは
       // charmIndicesOf が正で、色は「いちばん新しいチャーム」= 配列の最後
       // (地球をこわした人なら、隠しチャームの青いビーズになる)
-      const charms = charmIndicesOf(style);
+      const charms = charmIndicesFor(style, stabCharms[id]);
       if (charms.length > 0 && bead) {
         tmpBead.multiplyMatrices(
           tmpObj.matrix,
@@ -233,15 +236,19 @@ export default function Swords() {
       bead.instanceMatrix.needsUpdate = true;
       if (bead.instanceColor) bead.instanceColor.needsUpdate = true;
     }
-  }, [mask, stabColors, stabStyles, points, hidden, presentSkins]);
+  }, [mask, stabColors, stabStyles, stabCharms, points, hidden, presentSkins]);
 
-  // にじいろスキンだけ、見る角度で回る色相を時間でもゆっくり動かす
-  const iridescentSkins = useMemo(
-    () => presentSkins.filter((s) => SWORD_SKINS[s].iridescent),
+  // にじいろの色相と、金属・宝石のきらめきは時間で動く。
+  // 動くスキンが刺さっている代だけ時計を進める(ノーマルだけの代はゼロコスト)
+  const animatedSkins = useMemo(
+    () =>
+      presentSkins.filter(
+        (s) => SWORD_SKINS[s].iridescent || SWORD_SKINS[s].sparkle > 0
+      ),
     [presentSkins]
   );
   useFrame((state) => {
-    for (const s of iridescentSkins) {
+    for (const s of animatedSkins) {
       tickSwordMaterial(materialFor(s), state.clock.elapsedTime);
     }
   });

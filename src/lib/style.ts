@@ -10,7 +10,7 @@
 //
 // 隠しチャームも空のチャームも刺し本数と無関係に手に入るので、「数」では
 // 表せない。そのため独立したフラグに割いてある。
-// 0 は「情報なし = デフォルトのプラスチック剣・チャームなし」を意味する。
+// 0 は「情報なし = デフォルトのノーマルの剣・チャームなし」を意味する。
 // 過去の刺しは 0 のままなので、詰め方を変えると見た目が変わってしまう。
 //
 // 1バイトだった頃の値は下位8ビットがそのままなので、そのまま読める。
@@ -52,7 +52,7 @@ export function packStyle(
   );
 }
 
-/** バイトからスキンindex(存在しない番号なら0=プラスチック) */
+/** バイトからスキンindex(存在しない番号なら0=ノーマル) */
 export function skinOf(style: number): number {
   const s = style & 0b111;
   return s < SWORD_SKINS.length ? s : 0;
@@ -104,4 +104,50 @@ export function charmIndicesFrom(
   skyCharms = 0,
 ): number[] {
   return charmIndicesOf(packStyle(0, charm, earthCharm, skyCharms));
+}
+
+// ── チャームの「つけている一覧」(穴ごとに4バイト) ────────────────
+// style の bit3-6 は「刺して集めた数」しか持てないので、**どれをつけたか**は
+// 他の人には伝わらなかった。選べるようにした以上、選んだ姿がそのまま月に
+// 残らないと意味がないので、一覧そのものを別の1枚(Uint32Array)で配る。
+//
+//   bit 0-29 : CHARMS の index ごとのフラグ
+//   bit 30   : 「この行には一覧が記録されている」しるし
+//   bit 31   : 使わない(Postgres の INT は符号つき。負の値を作らない)
+//
+// 値が 0 の穴は「一覧の記録が無い(古い刺し)」なので、これまでどおり
+// style の数から charmIndicesOf で組み立てる。
+
+/** 一覧が記録されていることを示すビット */
+export const CHARM_SET_MARK = 1 << 30;
+/** 一覧に詰められるチャームの数 */
+export const CHARM_SET_MAX = 30;
+
+/** つけているチャームの index 配列 → 4バイト。空でも しるし は立てる */
+export function packCharmSet(indices: readonly number[]): number {
+  let v = CHARM_SET_MARK;
+  for (const i of indices) {
+    if (Number.isInteger(i) && i >= 0 && i < CHARM_SET_MAX) v |= 1 << i;
+  }
+  return v >>> 0;
+}
+
+/** packCharmSet の逆。記録が無い(0)なら null を返す */
+export function unpackCharmSet(v: number): number[] | null {
+  if (!v || (v & CHARM_SET_MARK) === 0) return null;
+  const out: number[] = [];
+  for (let i = 0; i < CHARM_SET_MAX; i++) {
+    if (v & (1 << i)) out.push(i);
+  }
+  return out;
+}
+
+/**
+ * その剣にぶら下がるチャーム。**3D も UI もこの1本を使うこと。**
+ * 一覧が記録されていればそれが正で、無い(古い)穴だけ style から組み立てる。
+ */
+export function charmIndicesFor(style: number, charmSet: number): number[] {
+  const set = unpackCharmSet(charmSet);
+  if (set) return set.filter((i) => i < CHARMS.length);
+  return charmIndicesOf(style);
 }

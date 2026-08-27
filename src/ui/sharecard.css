@@ -1,0 +1,78 @@
+/* じまんカード。したく引き出しの器(.kk-drawer)を借りている */
+.sharecard .kk-drawer-body {
+  padding-bottom: 18px;
+}
+
+/* 「何本刺したか」がこのカードの主役。ほかの数字の3倍で置く */
+.share-hero {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  margin: 6px 0 12px;
+  color: #3a3730;
+}
+.share-hero-cap,
+.share-hero-unit {
+  font-size: 13px;
+  font-weight: 800;
+  color: #8a7f6d;
+}
+.share-hero-num {
+  font-size: 46px;
+  line-height: 1;
+  font-weight: 900;
+  color: #e8402f;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 0 rgba(255, 255, 255, 0.75);
+}
+
+.share-stats {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  margin: 0 0 12px;
+  padding: 0;
+}
+.share-stats li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 11px;
+  border-radius: 12px;
+  background: rgba(43, 38, 32, 0.05);
+}
+.share-stats span {
+  font-size: 12px;
+  font-weight: 700;
+  color: #8a7f6d;
+}
+.share-stats b {
+  font-size: 15px;
+  font-weight: 900;
+  color: #3a3730;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 送り出す文そのもの。読んでから押せるように、隠さず出しておく */
+.share-text {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.65;
+  color: #5d564b;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(43, 38, 32, 0.12);
+}
+
+.share-buttons {
+  display: flex;
+  gap: 8px;
+}
+.share-buttons > * {
+  flex: 1 1 0;
+  text-align: center;
+}

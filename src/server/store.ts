@@ -21,6 +21,8 @@ export interface SnapshotData {
   mask: Uint8Array;
   /** 各穴の剣の色(0=色なし/デフォルト, 1..N=SWORD_COLORSのindex+1) */
   stabColors: Uint8Array;
+  /** 各穴の「つけていたチャームの一覧」(src/lib/style.ts の packCharmSet)。0=記録なし */
+  stabCharms: Uint32Array;
   /** 各穴の剣のスキン+チャーム(詰め方は src/lib/style.ts)。0=情報なし */
   stabStyles: Uint16Array;
   /** 現ラウンドの新しい順・最大12件 */
@@ -40,6 +42,8 @@ export interface StabInput {
   color: number | null;
   /** スキン+チャームを詰めた2バイト(src/lib/style.ts)。未指定は null */
   style: number | null;
+  /** つけていたチャームの一覧(packCharmSet の4バイト)。未指定は null */
+  charms: number | null;
   /** フィードに出すニックネーム(サニタイズ済み)。未登録は null */
   nickname: string | null;
 }
@@ -180,6 +184,22 @@ class PostgresStore implements IGameStore {
       await this.sql`ALTER TABLE kk_stabs ALTER COLUMN style TYPE INT`;
     }
     await this.sql`ALTER TABLE kk_stabs ADD COLUMN IF NOT EXISTS nickname VARCHAR(24)`;
+    // 「どのチャームをつけていたか」の一覧(4バイト)。数では表せないので別の列に持つ
+    await this.sql`ALTER TABLE kk_stabs ADD COLUMN IF NOT EXISTS charms INT`;
+    // 当てた瞬間に、その人のニックネームを winner_name へ先置きするようにした
+    // (観客にすぐ「〇〇が とばした！」と出したいため)。そのぶん
+    // 「まだ名前を刻んでいない」の目印を winner_name IS NULL では判定できなく
+    // なるので、専用の列を足す。既存の刻み済みのぶんは won_at で埋めておく
+    const claimedCol = (await this.sql`
+      SELECT data_type FROM information_schema.columns
+      WHERE table_name = 'kk_rounds' AND column_name = 'claimed_at'
+    `) as { data_type: string }[];
+    if (claimedCol.length === 0) {
+      await this.sql`ALTER TABLE kk_rounds ADD COLUMN claimed_at TIMESTAMPTZ`;
+      await this.sql`
+        UPDATE kk_rounds SET claimed_at = won_at
+        WHERE winner_name IS NOT NULL AND claimed_at IS NULL`;
+    }
     // レート制限(直近の刺し検索)用インデックス
     await this.sql`CREATE INDEX IF NOT EXISTS kk_stabs_ip_idx ON kk_stabs (ip_hash, created_at)`;
     await this.sql`CREATE INDEX IF NOT EXISTS kk_stabs_fp_idx ON kk_stabs (fp, created_at)`;
@@ -220,24 +240,37 @@ class PostgresStore implements IGameStore {
   /** そのラウンドの刺さり状態(ビットマスク+色+スキン/チャーム) */
   private async stabsStateOf(
     roundNo: number,
-  ): Promise<{ mask: Uint8Array; colors: Uint8Array; styles: Uint16Array }> {
+  ): Promise<{
+    mask: Uint8Array;
+    colors: Uint8Array;
+    styles: Uint16Array;
+    charms: Uint32Array;
+  }> {
     const rows = (await this.sql`
-      SELECT hole_id, color, style FROM kk_stabs WHERE round_no = ${roundNo}
-    `) as { hole_id: number; color: number | null; style: number | null }[];
+      SELECT hole_id, color, style, charms FROM kk_stabs WHERE round_no = ${roundNo}
+    `) as {
+      hole_id: number;
+      color: number | null;
+      style: number | null;
+      charms: number | null;
+    }[];
     const mask = emptyMask();
     const colors = new Uint8Array(HOLE_COUNT);
     const styles = new Uint16Array(HOLE_COUNT);
+    const charms = new Uint32Array(HOLE_COUNT);
     for (const r of rows) {
       if (r.hole_id < 0 || r.hole_id >= HOLE_COUNT) continue;
       setBit(mask, r.hole_id);
-      if (r.color !== null && r.color >= 0 && r.color < SWORD_COLORS.length) {
-        colors[r.hole_id] = r.color + 1; // 0は「色なし」に予約
+      if (r.color !== null && r.color >= 0 && r.color < 255) {
+        colors[r.hole_id] = r.color + 1;
       }
       if (r.style !== null && r.style > 0 && r.style <= 0xffff) {
         styles[r.hole_id] = r.style;
       }
+      // charms は bit30 まで使う。INT は符号つきなので念のため 0 以上だけ通す
+      if (r.charms !== null && r.charms > 0) charms[r.hole_id] = r.charms >>> 0;
     }
-    return { mask, colors, styles };
+    return { mask, colors, styles, charms };
   }
 
   private async maskOf(roundNo: number): Promise<Uint8Array> {
@@ -301,6 +334,7 @@ class PostgresStore implements IGameStore {
       mask: stabs.mask,
       stabColors: stabs.colors,
       stabStyles: stabs.styles,
+      stabCharms: stabs.charms,
       recent,
       prevWinner,
     };
@@ -336,8 +370,8 @@ class PostgresStore implements IGameStore {
     // PK(round_no, hole_id) 衝突なら ins が0行 → UPDATE も0行 = 先客あり
     const inserted = (await this.sql.query(
       `WITH ins AS (
-         INSERT INTO kk_stabs (round_no, hole_id, ip_hash, fp, country, color, style, nickname)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         INSERT INTO kk_stabs (round_no, hole_id, ip_hash, fp, country, color, style, nickname, charms)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          ON CONFLICT (round_no, hole_id) DO NOTHING
          RETURNING hole_id
        )
@@ -353,6 +387,7 @@ class PostgresStore implements IGameStore {
         input.color,
         input.style,
         input.nickname,
+        input.charms,
       ],
     )) as { stab_count: number }[];
 
@@ -394,12 +429,16 @@ class PostgresStore implements IGameStore {
     input: StabInput,
   ): Promise<Extract<StabOutcome, { kind: "win" }> | null> {
     const token = newClaimToken();
+    // 名前を刻む前でも、観客の画面に「〇〇が とばした！」と出せるように、
+    // 刺すときに送られてきたニックネームをそのまま置いておく。
+    // 当てた本人はこのあと名前を入れ直せる(claimed_at がその目印)
     const won = (await this.sql`
       UPDATE kk_rounds
       SET won_at = now(),
           claim_token = ${token},
           winner_country = ${input.country},
-          winner_hole = ${input.holeId}
+          winner_hole = ${input.holeId},
+          winner_name = ${input.nickname}
       WHERE round_no = ${roundNo} AND won_at IS NULL
       RETURNING round_no
     `) as { round_no: number }[];
@@ -417,11 +456,11 @@ class PostgresStore implements IGameStore {
     await this.ensureSchema();
     // token一致 & 未クレームのときだけ1行更新される(条件付きUPDATEで排他)
     const rows = (await this.sql`
-      UPDATE kk_rounds SET winner_name = ${name}
+      UPDATE kk_rounds SET winner_name = ${name}, claimed_at = now()
       WHERE round_no = ${roundNo}
         AND claim_token = ${token}
         AND won_at IS NOT NULL
-        AND winner_name IS NULL
+        AND claimed_at IS NULL
       RETURNING round_no
     `) as { round_no: number }[];
     if (rows.length === 0) {
@@ -470,6 +509,8 @@ interface MemRound {
   winnerCountry: string | null;
   winnerHole: number | null;
   claimToken: string | null;
+  /** 名前を刻んだ時刻。null = まだ本人が入れていない(先置きの名前かも) */
+  claimedAt: number | null;
   stabCount: number;
 }
 
@@ -478,6 +519,7 @@ interface MemStab {
   country: string | null;
   color: number | null;
   style: number | null;
+  charms: number | null;
   nickname: string | null;
   at: number; // epoch ms
 }
@@ -500,6 +542,7 @@ function newMemRound(roundNo: number): MemRound {
     winnerCountry: null,
     winnerHole: null,
     claimToken: null,
+    claimedAt: null,
     stabCount: 0,
   };
 }
@@ -562,6 +605,15 @@ class MemoryStore implements IGameStore {
     return colors;
   }
 
+  private charmsOf(roundNo: number): Uint32Array {
+    const charms = new Uint32Array(HOLE_COUNT);
+    for (const s of this.stabsOf(roundNo).values()) {
+      if (s.holeId < 0 || s.holeId >= HOLE_COUNT) continue;
+      if (s.charms !== null && s.charms > 0) charms[s.holeId] = s.charms >>> 0;
+    }
+    return charms;
+  }
+
   private stylesOf(roundNo: number): Uint16Array {
     const styles = new Uint16Array(HOLE_COUNT);
     for (const s of this.stabsOf(roundNo).values()) {
@@ -596,6 +648,7 @@ class MemoryStore implements IGameStore {
       mask: this.maskOf(active.roundNo),
       stabColors: this.colorsOf(active.roundNo),
       stabStyles: this.stylesOf(active.roundNo),
+      stabCharms: this.charmsOf(active.roundNo),
       recent,
       prevWinner: prev ? memWinnerInfo(prev) : null,
     };
@@ -629,6 +682,7 @@ class MemoryStore implements IGameStore {
       country: input.country,
       color: input.color,
       style: input.style,
+      charms: input.charms,
       nickname: input.nickname,
       at: now,
     });
@@ -643,6 +697,8 @@ class MemoryStore implements IGameStore {
       active.claimToken = token;
       active.winnerCountry = input.country;
       active.winnerHole = input.holeId;
+      // ニックネームを先置き(本人はこのあと入れ直せる)
+      active.winnerName = input.nickname;
       // 次の代のこすくまくんを用意
       this.data.rounds.push(newMemRound(active.roundNo + 1));
       return { kind: "win", claimToken: token, roundNo: active.roundNo };
@@ -660,10 +716,11 @@ class MemoryStore implements IGameStore {
       (x) => x.roundNo === roundNo && x.wonAt !== null && x.claimToken === token,
     );
     if (!r) return { ok: false, message: "トークンがちがうよ" };
-    if (r.winnerName !== null) {
+    if (r.claimedAt !== null) {
       return { ok: false, message: "もう名前が刻まれているよ" };
     }
     r.winnerName = name;
+    r.claimedAt = Date.now();
     return { ok: true };
   }
 
