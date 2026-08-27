@@ -11,7 +11,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CHAT_MAX_LEN, FEED_ROWS } from "@/lib/config";
 import { useGameStore } from "@/game/store";
-import { flagEmoji } from "./feedText";
+import { agoLabel, flagEmoji } from "./feedText";
 import "./ui.css";
 
 /**
@@ -50,6 +50,13 @@ export default function Feed({ onOpenLog }: FeedProps) {
   const chat = useGameStore((s) => s.chat);
   const sendChat = useGameStore((s) => s.sendChat);
   const sending = useGameStore((s) => s.chatSending);
+
+  // 「○ふん前」を進めるための時計。数行だけの軽い再描画
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
@@ -118,6 +125,7 @@ export default function Feed({ onOpenLog }: FeedProps) {
                 {m.operator ? "うんえい" : (m.name ?? "だれか")}
               </span>
               <span className="feed-body">{m.body}</span>
+              <span className="feed-time">{agoLabel(m.at, now)}</span>
             </div>
           ))
         )}

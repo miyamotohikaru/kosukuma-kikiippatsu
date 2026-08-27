@@ -16,8 +16,24 @@ export type TopperKind =
   | "planet" // リング付き惑星
   | "bear" // くま頭(球3つ)
   | "diamond"; // ダイヤ
-/** 素材の系統 */
-export type MaterialKind = "gold" | "silver" | "bronze" | "aurora" | "nebula";
+/**
+ * 素材の系統。**色はこのゲームでいちばん記憶に残るところ**なので、
+ * 「金・銀・銅」の3色だけにせず、宝石や鉱物まで広げて12系統ある。
+ * 並び順は「代」の順に回る番号でもある(下の FAMILY)。
+ */
+export type MaterialKind =
+  | "silver" // ぎん
+  | "gold" // きん
+  | "aurora" // オーロラ(虹の干渉色 + ラメ)
+  | "rose" // ローズゴールド
+  | "emerald" // エメラルド
+  | "bronze" // どう
+  | "sapphire" // サファイア
+  | "pearl" // しんじゅ(やわらかい真珠光)
+  | "amethyst" // アメジスト
+  | "nebula" // せいうん(深い紺 + 内側の紫 + ラメ)
+  | "coral" // さんご(つや消しの珊瑚色)
+  | "obsidian"; // こくようせき(黒いガラス)
 /** 台座の形 */
 export type BaseShape = "round" | "square";
 
@@ -252,68 +268,159 @@ function radiusAtY(profile: [number, number][], y: number): number {
   return best;
 }
 
-/** 素材系統ごとの質感ゆらぎ */
-function buildMaterial(kind: MaterialKind, rng: () => number): TrophyMaterialParams {
-  switch (kind) {
-    case "gold":
-      return {
-        kind,
-        color: "#f6c445",
-        metalness: randRange(rng, 0.9, 1),
-        roughness: randRange(rng, 0.18, 0.34),
-        emissive: "#7a4f0e",
-        emissiveIntensity: randRange(rng, 0.12, 0.2),
-        iridescence: 0,
-        sparkle: false,
-      };
-    case "silver":
-      return {
-        kind,
-        color: "#e3e8f2",
-        metalness: randRange(rng, 0.9, 1),
-        roughness: randRange(rng, 0.12, 0.28),
-        emissive: "#4a5878",
-        emissiveIntensity: randRange(rng, 0.1, 0.16),
-        iridescence: 0,
-        sparkle: false,
-      };
-    case "bronze":
-      return {
-        kind,
-        color: "#c8803f",
-        metalness: randRange(rng, 0.85, 1),
-        roughness: randRange(rng, 0.3, 0.45),
-        emissive: "#5e3410",
-        emissiveIntensity: randRange(rng, 0.12, 0.2),
-        iridescence: 0,
-        sparkle: false,
-      };
-    case "aurora":
-      // オーロラ: 白地に虹の干渉色 + ラメ
-      return {
-        kind,
-        color: "#eae6ff",
-        metalness: randRange(rng, 0.75, 0.9),
-        roughness: randRange(rng, 0.1, 0.22),
-        emissive: "#8a7cff",
-        emissiveIntensity: randRange(rng, 0.1, 0.18),
-        iridescence: 1,
-        sparkle: true,
-      };
-    case "nebula":
-      // 星雲: 深い紺 + 内側から光る紫 + ラメ
-      return {
-        kind,
-        color: "#262c66",
-        metalness: randRange(rng, 0.5, 0.7),
-        roughness: randRange(rng, 0.28, 0.42),
-        emissive: "#6a5df0",
-        emissiveIntensity: randRange(rng, 0.3, 0.45),
-        iridescence: 0,
-        sparkle: true,
-      };
-  }
+/**
+ * 素材系統ごとの見た目。数値の幅は「同じ系統でも1本ずつ少し違う」ためのゆらぎ。
+ *
+ * **rng を消費する回数は全系統で同じ(3回)にしておくこと。** ここで消費数が
+ * 変わると、以降の乱数の並びがずれて、既にある代の**形**まで変わってしまう。
+ */
+interface MaterialRecipe {
+  color: string;
+  metal: [number, number];
+  rough: [number, number];
+  emissive: string;
+  emissiveI: [number, number];
+  /** 見る角度で色が回る(1=あり) */
+  iridescence?: number;
+  /** 表面のラメ */
+  sparkle?: boolean;
 }
+
+const MATERIALS: Record<MaterialKind, MaterialRecipe> = {
+  silver: {
+    color: "#e3e8f2",
+    metal: [0.9, 1],
+    rough: [0.12, 0.28],
+    emissive: "#4a5878",
+    emissiveI: [0.1, 0.16],
+  },
+  gold: {
+    color: "#f6c445",
+    metal: [0.9, 1],
+    rough: [0.18, 0.34],
+    emissive: "#7a4f0e",
+    emissiveI: [0.12, 0.2],
+  },
+  aurora: {
+    // 白地に虹の干渉色 + ラメ
+    color: "#eae6ff",
+    metal: [0.75, 0.9],
+    rough: [0.1, 0.22],
+    emissive: "#8a7cff",
+    emissiveI: [0.1, 0.18],
+    iridescence: 1,
+    sparkle: true,
+  },
+  rose: {
+    // ローズゴールド。金より柔らかく、銅よりピンクへ寄せる
+    color: "#f0a68f",
+    metal: [0.88, 1],
+    rough: [0.2, 0.34],
+    emissive: "#7d3a2c",
+    emissiveI: [0.12, 0.2],
+  },
+  emerald: {
+    // 深い緑の宝石。金属より少し曇らせて「石」に寄せる
+    color: "#1f9c6b",
+    metal: [0.55, 0.72],
+    rough: [0.14, 0.26],
+    emissive: "#0c6b46",
+    emissiveI: [0.24, 0.36],
+    sparkle: true,
+  },
+  bronze: {
+    color: "#c8803f",
+    metal: [0.85, 1],
+    rough: [0.3, 0.45],
+    emissive: "#5e3410",
+    emissiveI: [0.12, 0.2],
+  },
+  sapphire: {
+    color: "#2f5fd0",
+    metal: [0.55, 0.72],
+    rough: [0.12, 0.24],
+    emissive: "#1b3a94",
+    emissiveI: [0.26, 0.4],
+    sparkle: true,
+  },
+  pearl: {
+    // 真珠。金属感は低く、うっすら干渉色がのる
+    color: "#fdf3ea",
+    metal: [0.3, 0.45],
+    rough: [0.16, 0.3],
+    emissive: "#8d7f9e",
+    emissiveI: [0.14, 0.22],
+    iridescence: 1,
+  },
+  amethyst: {
+    color: "#8b52d6",
+    metal: [0.5, 0.68],
+    rough: [0.14, 0.26],
+    emissive: "#4a1e8a",
+    emissiveI: [0.26, 0.4],
+    sparkle: true,
+  },
+  nebula: {
+    // 深い紺 + 内側から光る紫 + ラメ
+    color: "#262c66",
+    metal: [0.5, 0.7],
+    rough: [0.28, 0.42],
+    emissive: "#6a5df0",
+    emissiveI: [0.3, 0.45],
+    sparkle: true,
+  },
+  coral: {
+    // つや消しの珊瑚色。金属だらけの棚に1本だけ「石じゃないもの」を混ぜる
+    color: "#ff7f6b",
+    metal: [0.12, 0.28],
+    rough: [0.42, 0.58],
+    emissive: "#8c2d1f",
+    emissiveI: [0.16, 0.26],
+  },
+  obsidian: {
+    // 黒いガラス。暗いホールで沈まないよう、ふちの光だけ強めに残す
+    color: "#15161f",
+    metal: [0.72, 0.9],
+    rough: [0.06, 0.16],
+    emissive: "#3b3f7a",
+    emissiveI: [0.3, 0.44],
+    sparkle: true,
+  },
+};
+
+function buildMaterial(kind: MaterialKind, rng: () => number): TrophyMaterialParams {
+  const r = MATERIALS[kind];
+  return {
+    kind,
+    color: r.color,
+    metalness: randRange(rng, r.metal[0], r.metal[1]),
+    roughness: randRange(rng, r.rough[0], r.rough[1]),
+    emissive: r.emissive,
+    emissiveIntensity: randRange(rng, r.emissiveI[0], r.emissiveI[1]),
+    iridescence: r.iridescence ?? 0,
+    sparkle: r.sparkle ?? false,
+  };
+}
+
+/**
+ * 代の順に回る素材の並び。**先頭3つは動かさないこと**
+ * (第1代=ぎん / 第2代=きん / 第3代=オーロラ は、もう世に出ている姿)。
+ * 12系統あるので、13代で一周する。
+ */
+const FAMILY: readonly MaterialKind[] = [
+  "silver",
+  "gold",
+  "aurora",
+  "rose",
+  "emerald",
+  "bronze",
+  "sapphire",
+  "pearl",
+  "amethyst",
+  "nebula",
+  "coral",
+  "obsidian",
+];
 
 /**
  * roundNo と名前からトロフィーの全パラメータを決定的に生成する。
@@ -404,18 +511,10 @@ export function getTrophyParams(roundNo: number, name: string): TrophyParams {
     baseHeight + cupHeight + topperScale * (cupStyle === "rocket" ? 0.62 : 0.45);
 
   // ── 素材 ──
-  // 系統は**代の順に回す**。乱数で選んでいたときは、となり同士が同じ金属に
-  // なることがあり(第2代と第3代がどちらも銅)、別のトロフィーなのに
-  // 同じものが並んでいるように見えていた。5系統を順に回せば、
-  // となり合う代が同じ系統になることは起きない。
-  // 並びの起点は第1代=ぎん(いままでの第1代と同じ見た目を保つため)。
-  const FAMILY: readonly MaterialKind[] = [
-    "silver",
-    "gold",
-    "aurora",
-    "bronze",
-    "nebula",
-  ];
+  // 系統は**代の順に回す**(FAMILY)。乱数で選んでいたときは、となり同士が
+  // 同じ金属になることがあり(第2代と第3代がどちらも銅)、別のトロフィーなのに
+  // 同じものが並んでいるように見えていた。順に回せば、となり合う代が
+  // 同じ系統になることは起きない。
   // 素材に乱数を使わなくなったが、ここで消費をやめると以降の乱数の並びが
   // ずれて、既存のトロフィーの**形**まで変わってしまう。1つ捨てておく
   rng();

@@ -23,6 +23,8 @@ interface Pop {
   text: string;
   /** true = もうすぐ届く。赤く大きく出して「そろそろ来る」を伝える */
   hot?: boolean;
+  /** true = 小さく静かに(こすくまくんの顔に重なるので) */
+  quiet?: boolean;
   x: number;
   y: number;
 }
@@ -59,7 +61,9 @@ export default function TapPop() {
       {pops.map((p) => (
         <span
           key={p.id}
-          className={p.hot ? "tappop is-hot" : "tappop"}
+          className={
+            "tappop" + (p.hot ? " is-hot" : "") + (p.quiet ? " is-quiet" : "")
+          }
           style={{ left: `${p.x}px`, top: `${p.y}px` }}
         >
           {p.text}

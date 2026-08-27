@@ -27,3 +27,17 @@ export function feedLine(e: StabEvent, mine: boolean, falling: boolean): string 
   const who = e.name || (mine ? "きみ" : null);
   return who ? `${who}が 刺した` : "だれかが 刺した";
 }
+
+/** どのくらい前か。時計がずれて未来になっても「いま」に丸める */
+export function agoLabel(at: string, now: number): string {
+  const ms = now - Date.parse(at);
+  if (!Number.isFinite(ms)) return "";
+  if (ms < 8000) return "いま";
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return `${sec}びょう前`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}ふん前`;
+  const hour = Math.floor(min / 60);
+  if (hour < 24) return `${hour}じかん前`;
+  return `${Math.floor(hour / 24)}にち前`;
+}

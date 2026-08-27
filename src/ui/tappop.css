@@ -95,3 +95,21 @@
     animation: tappop-fade 0.9s ease both;
   }
 }
+
+/* つつきの数え上げ。こすくまくんの体の上に出るので、
+   囲みも影も外して「小さくささやく」だけにする。
+   数字が見えればよく、目を持っていかれてはいけない */
+.tappop.is-quiet {
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 249, 219, 0.72);
+  text-shadow: 0 1px 3px rgba(6, 8, 18, 0.95);
+  /* 指の真上ではなく少し右上へ逃がす(指と顔の両方を隠さない) */
+  margin-left: 14px;
+  margin-top: -6px;
+}

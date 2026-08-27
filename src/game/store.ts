@@ -204,7 +204,14 @@ interface GameState {
    * 「あと何回で開くか」を教えるためだけの、消えもの。
    * チャームが開いた回はファンファーレに任せるので null。
    */
-  tapPop: { id: number; text: string; hot?: boolean } | null;
+  tapPop: {
+    id: number;
+    text: string;
+    /** もうすぐ届く。赤くふくらませる */
+    hot?: boolean;
+    /** 小さく静かに出す(こすくまくんの顔に重なるので、主張させない) */
+    quiet?: boolean;
+  } | null;
 
   /**
    * 開いた「空のチャーム」。SKY_KINDS の順に立てたビット。
@@ -1489,6 +1496,9 @@ export const useGameStore = create<GameState>((set, get) => {
             id: Date.now(),
             text: `あと ${left.toLocaleString()}`,
             hot: left <= 100,
+            // つつく場所はこすくまくんの体の上。大きく出すと顔が隠れるので、
+            // ふだんは小さくささやく程度にしておく
+            quiet: left > 100,
           },
         });
         return;

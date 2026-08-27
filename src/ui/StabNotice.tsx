@@ -15,22 +15,8 @@
 import { useEffect, useState } from "react";
 import { STAB_LOG_ROWS } from "@/lib/config";
 import { useGameStore } from "@/game/store";
-import { feedLine, flagEmoji } from "./feedText";
+import { agoLabel, feedLine, flagEmoji } from "./feedText";
 import "./stabnotice.css";
-
-/** どのくらい前か。時計がずれて未来になっても「いま」に丸める */
-function agoLabel(at: string, now: number): string {
-  const ms = now - Date.parse(at);
-  if (!Number.isFinite(ms)) return "";
-  if (ms < 8000) return "いま";
-  const sec = Math.floor(ms / 1000);
-  if (sec < 60) return `${sec}びょう前`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}ふん前`;
-  const hour = Math.floor(min / 60);
-  if (hour < 24) return `${hour}じかん前`;
-  return `${Math.floor(hour / 24)}にち前`;
-}
 
 export default function StabNotice() {
   const recent = useGameStore((s) => s.recent);
@@ -77,7 +63,9 @@ export default function StabNotice() {
               <span className="stabnotice-text">
                 {feedLine(e, mine, falling)}
               </span>
-              <span className="stabnotice-hole">#{e.holeId}</span>
+              {/* 1000個ある穴の番号。ただの # だと何の数字か分からないので、
+                  「あな」を添えておく */}
+              <span className="stabnotice-hole">あな#{e.holeId}</span>
               <span className="stabnotice-ago">{agoLabel(e.at, now)}</span>
             </div>
           );
