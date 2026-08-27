@@ -1,63 +1,18 @@
 "use client";
 
-// 左下のチャット欄。**みんなが書いたコメント**と、月で起きたこと(刺し)を
-// 1本の流れにまぜて出す。並びはYouTubeのライブと同じで、
-// **新しいものが下**。いちばん下が入力欄なので、書いた自分のコメントが
-// そのすぐ上に出てくる = 送れたことがその場で分かる。
+// 左下のチャット欄。**ここに出るのはみんなが書いたコメントだけ。**
+// 月で起きたこと(だれが刺したか)は右上の通知(StabNotice)が受け持つ。
+// 同じ箱に混ぜていた時期もあったが、読むもの(コメント)と
+// 流し見するもの(刺しの記録)が同居すると、どちらも読みにくくなる。
 //
-// 刺しの行を混ぜているのは、コメントが無い時間帯でも欄が動いているように
-// 見せたいから(ゲームのキルログとチャットが同じ箱にいるのと同じ)。
-// ただし主役はコメントなので、刺しの行は一段暗く・小さく置く。
+// 並びはYouTubeのライブと同じで**新しいものが下**。いちばん下が入力欄なので、
+// 書いた自分のコメントがそのすぐ上に出てくる = 送れたことがその場で分かる。
 
 import { useEffect, useRef, useState } from "react";
 import { CHAT_MAX_LEN, FEED_ROWS } from "@/lib/config";
-import type { ChatMessage, StabEvent } from "@/lib/types";
 import { useGameStore } from "@/game/store";
-import { feedLine, flagEmoji } from "./feedText";
+import { flagEmoji } from "./feedText";
 import "./ui.css";
-
-/** どれくらい前か。サーバーと時計がずれて未来になっても「いま」に丸める */
-function agoLabel(at: string, now: number): string {
-  const ms = now - Date.parse(at);
-  if (!Number.isFinite(ms)) return "";
-  if (ms < 8000) return "いま";
-  const sec = Math.floor(ms / 1000);
-  if (sec < 60) return `${sec}びょう前`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}ふん前`;
-  const hour = Math.floor(min / 60);
-  if (hour < 24) return `${hour}じかん前`;
-  return `${Math.floor(hour / 24)}にち前`;
-}
-
-type Row =
-  | { kind: "chat"; key: string; at: number; msg: ChatMessage }
-  | { kind: "stab"; key: string; at: number; e: StabEvent };
-
-/** コメントと刺しを時刻でまぜて、古い順(= 下が最新)に並べる */
-export function mergeRows(
-  chat: ChatMessage[],
-  stabs: StabEvent[],
-  limit: number,
-): Row[] {
-  const rows: Row[] = [
-    ...chat.map((m): Row => ({
-      kind: "chat",
-      key: `c${m.id}`,
-      at: Date.parse(m.at),
-      msg: m,
-    })),
-    ...stabs.map((e): Row => ({
-      kind: "stab",
-      key: `s${e.at}-${e.holeId}`,
-      at: Date.parse(e.at),
-      e,
-    })),
-  ];
-  // 新しい順に切ってから、表示のために古い順へひっくり返す
-  rows.sort((a, b) => b.at - a.at);
-  return rows.slice(0, limit).reverse();
-}
 
 /**
  * スマホのソフトキーボードぶん、チャット欄を持ち上げる。
@@ -87,15 +42,12 @@ function useKeyboardLift(active: boolean) {
 }
 
 interface FeedProps {
-  /** 「ぜんぶ みる」を押したとき。記録の一覧をひらく */
+  /** 「ぜんぶ みる」を押したとき。コメントの一覧をひらく */
   onOpenLog: () => void;
 }
 
 export default function Feed({ onOpenLog }: FeedProps) {
-  const recent = useGameStore((s) => s.recent);
   const chat = useGameStore((s) => s.chat);
-  const myStabs = useGameStore((s) => s.myStabs);
-  const remoteStabs = useGameStore((s) => s.remoteStabs);
   const sendChat = useGameStore((s) => s.sendChat);
   const sending = useGameStore((s) => s.chatSending);
 
@@ -104,14 +56,8 @@ export default function Feed({ onOpenLog }: FeedProps) {
   const composing = useRef(false);
   useKeyboardLift(focused);
 
-  // 経過時間の表示を進めるための時計。1秒ごとの、数行だけの軽い再描画
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
-
-  const rows = mergeRows(chat, recent, FEED_ROWS);
+  // store は新しい順に持っている。表示は「新しいものが下」なのでひっくり返す
+  const rows = chat.slice(0, FEED_ROWS).reverse();
 
   const submit = async () => {
     if (composing.current) return; // 変換中のEnterは確定であって送信ではない
@@ -136,28 +82,15 @@ export default function Feed({ onOpenLog }: FeedProps) {
             まだ 何も ないよ。さいしょの コメントを かいてみて！
           </p>
         ) : (
-          rows.map((row) =>
-            row.kind === "chat" ? (
-              <div key={row.key} className="feed-row feed-chat">
-                <span className="feed-flag" aria-hidden="true">
-                  {flagEmoji(row.msg.country)}
-                </span>
-                <span className="feed-name">{row.msg.name ?? "だれか"}</span>
-                <span className="feed-body">{row.msg.body}</span>
-              </div>
-            ) : (
-              <StabRow
-                key={row.key}
-                e={row.e}
-                now={now}
-                mine={!row.e.win && myStabs.includes(row.e.holeId)}
-                falling={
-                  !row.e.win &&
-                  remoteStabs.some((r) => r.holeId === row.e.holeId)
-                }
-              />
-            ),
-          )
+          rows.map((m) => (
+            <div key={m.id} className="feed-row feed-chat">
+              <span className="feed-flag" aria-hidden="true">
+                {flagEmoji(m.country)}
+              </span>
+              <span className="feed-name">{m.name ?? "だれか"}</span>
+              <span className="feed-body">{m.body}</span>
+            </div>
+          ))
         )}
       </div>
 
@@ -196,35 +129,6 @@ export default function Feed({ onOpenLog }: FeedProps) {
           {sending ? "…" : "おくる"}
         </button>
       </form>
-    </div>
-  );
-}
-
-/** 月で起きたこと(刺し)の行。コメントより一段しずかに置く */
-function StabRow({
-  e,
-  now,
-  mine,
-  falling,
-}: {
-  e: StabEvent;
-  now: number;
-  mine: boolean;
-  falling: boolean;
-}) {
-  const cls = ["feed-row", "feed-sys"];
-  if (e.win) cls.push("feed-win");
-  else if (falling) cls.push("feed-live");
-  else if (mine) cls.push("feed-mine");
-
-  return (
-    <div className={cls.join(" ")}>
-      <span className="feed-flag" aria-hidden="true">
-        {flagEmoji(e.country)}
-      </span>
-      <span className="feed-text">{feedLine(e, mine, falling)}</span>
-      <span className="feed-hole">#{e.holeId}</span>
-      <span className="feed-time">{agoLabel(e.at, now)}</span>
     </div>
   );
 }

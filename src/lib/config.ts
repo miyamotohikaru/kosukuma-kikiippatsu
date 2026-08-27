@@ -32,8 +32,8 @@ export const CHAT_BURST_PER_MIN = 12;
 
 /** サーバーが返す直近のコメント数 */
 export const CHAT_FETCH = 30;
-/** 左下に出す行数(コメント + 刺しの記録をまぜて、新しい順に) */
-export const FEED_ROWS = 5;
+/** 左下のチャットに出す行数(コメントだけ。新しいものが下) */
+export const FEED_ROWS = 6;
 
 // ── 演出タイミング (ms) ──────────────────────────────
 export const T_STAB = 1100; // 剣を構えて刺すまで

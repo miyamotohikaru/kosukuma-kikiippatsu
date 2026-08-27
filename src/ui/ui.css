@@ -2899,8 +2899,8 @@ button.kk-charm-btn:active .kk-charm-cell {
 
 
 /* ── チャット ────────────────────────────────────────
-   左下の欄は「みんなのコメント」が主役。刺しの記録(.feed-sys)は
-   同じ箱に混ざるが、一段しずかに置いて主従をはっきりさせる。 */
+   左下の欄は みんなのコメント だけ。だれが刺したかは右上の通知が受け持つ
+   (読むものと流し見するものが同居すると、どちらも読みにくくなる)。 */
 .feed-wrap {
   width: min(78vw, 340px);
 }
@@ -2941,22 +2941,6 @@ button.kk-charm-btn:active .kk-charm-cell {
   font-weight: 600;
   line-height: 1.45;
   color: rgba(255, 254, 242, 0.95);
-}
-
-/* 刺しの記録。コメントの邪魔をしない濃さまで下げる */
-.feed-row.feed-sys {
-  font-size: 10.5px;
-  padding: 3px 10px 3px 7px;
-  background: rgba(5, 7, 26, 0.34);
-  color: rgba(255, 254, 242, 0.66);
-}
-.feed-row.feed-sys .feed-flag {
-  font-size: 11px;
-}
-/* 当たりの行だけは、しずかにしない */
-.feed-row.feed-sys.feed-win {
-  font-size: 11.5px;
-  color: var(--accent);
 }
 
 .feed-empty {

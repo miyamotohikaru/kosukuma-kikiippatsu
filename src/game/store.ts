@@ -220,13 +220,6 @@ interface GameState {
   nickname: string | null;
 
   /**
-   * これまでに流れてきた刺しの記録(新しい順・最大 FEED_LOG_MAX 件)。
-   * サーバーが返すのは直近12件だけなので、見ているあいだのぶんを
-   * この端末に貯めて「ぜんぶ みる」で読み返せるようにしている。
-   */
-  feedLog: StateResponse["recent"];
-
-  /**
    * みんなのコメント(新しい順)。刺しの記録とまぜて左下に流す。
    * サーバーの id が並び順であり、重複排除の鍵でもある。
    */
@@ -554,9 +547,6 @@ function applyPreviewParams(set: (p: Partial<GameState>) => void): void {
   }
 }
 
-/** 端末に貯める刺しの記録の上限。多すぎても読めないので、これくらいで足りる */
-const FEED_LOG_MAX = 120;
-
 /** 端末に貯めるコメントの上限。「ぜんぶ みる」で遡れるぶん */
 const CHAT_LOG_MAX = 200;
 
@@ -646,18 +636,6 @@ export const useGameStore = create<GameState>((set, get) => {
     return merged.slice(0, CHAT_LOG_MAX);
   };
 
-  /** 流れてきた刺しを、この端末の記録へ足す(新しい順・重複はしない) */
-  const mergeFeedLog = (
-    log: StateResponse["recent"],
-    incoming: StateResponse["recent"]
-  ): StateResponse["recent"] => {
-    const key = (e: StateResponse["recent"][number]) => `${e.at}-${e.holeId}`;
-    const seen = new Set(log.map(key));
-    const fresh = incoming.filter((e) => !seen.has(key(e)));
-    if (fresh.length === 0) return log;
-    return [...fresh, ...log].slice(0, FEED_LOG_MAX);
-  };
-
   /** サーバー状態を表示へ反映 */
   const applyState = (s: StateResponse) => {
     const cur = get();
@@ -713,7 +691,6 @@ export const useGameStore = create<GameState>((set, get) => {
       remoteStabs,
       myStabs,
       recent: s.recent,
-      feedLog: mergeFeedLog(cur.feedLog, s.recent),
       chat: mergeChat(cur.chat, s.chat),
       prevWinner: s.prevWinner,
       connected: true,
@@ -943,7 +920,6 @@ export const useGameStore = create<GameState>((set, get) => {
     skyPop: null,
     caughtSky: initialCaughtSky,
     nickname: (LS.get("kk-nick") || "").slice(0, NAME_MAX_LEN) || null,
-    feedLog: [],
     chat: [],
     chatSending: false,
     chatCooldownUntil: 0,
