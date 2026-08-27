@@ -1,0 +1,48 @@
+/* ベーススタイル。UIコンポーネント固有の装飾は src/ui/ui.css に書く */
+
+:root {
+  --space: #0a0e2a;
+  --space-deep: #05071a;
+  --moon: #cfd3e8;
+  --kosukuma: #fdf7c1;
+  --accent: #ffd93d;
+  --accent-pink: #ffb3c7;
+  --ui: #fffef2;
+  --ui-text: #3a3730;
+  --danger: #ff6b6b;
+  --safe: #7ce38b;
+  --font-game: var(--font-rounded), "Hiragino Maru Gothic ProN", sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  background: var(--space-deep);
+  color: var(--ui-text);
+  font-family: var(--font-game);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+
+.game-root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+.game-root canvas {
+  display: block;
+  touch-action: none;
+}

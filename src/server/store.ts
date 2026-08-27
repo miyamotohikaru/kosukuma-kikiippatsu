@@ -1,0 +1,707 @@
+// サーバー側ストレージ層。DATABASE_URL があれば Neon Postgres、なければ
+// プロセス内メモリ(ローカル開発用)を使う。neon() のHTTPクエリは1文単位で
+// アトミックなので、マルチステートメントのトランザクションは使わず、
+// 勝敗などの整合性は「条件付きUPDATE/INSERT + 一意制約」だけで守る。
+//
+// 重要: あたり穴 winning_hole はこのモジュールの外(APIレスポンス)へ絶対に出さない。
+
+import { randomBytes, randomInt } from "node:crypto";
+import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
+import { COOLDOWN_SEC, HOLE_COUNT, SWORD_COLORS } from "@/lib/config";
+import { emptyMask, setBit } from "@/lib/bitmask";
+import type { StabEvent, TrophyRecord, WinnerInfo } from "@/lib/types";
+
+// ── ルートハンドラへ公開する契約 ─────────────────────
+
+/** GET /api/state 用のスナップショット(mask はバイナリのまま。base64化はルート側) */
+export interface SnapshotData {
+  roundNo: number;
+  startedAt: string;
+  stabCount: number;
+  mask: Uint8Array;
+  /** 各穴の剣の色(0=色なし/デフォルト, 1..N=SWORD_COLORSのindex+1) */
+  stabColors: Uint8Array;
+  /** 各穴の剣のスキン+チャーム(詰め方は src/lib/style.ts)。0=情報なし */
+  stabStyles: Uint16Array;
+  /** 現ラウンドの新しい順・最大12件 */
+  recent: StabEvent[];
+  /** 直前ラウンド(roundNo-1)の勝者。初代なら null */
+  prevWinner: WinnerInfo | null;
+}
+
+/** POST /api/stab の入力(HTTP層で ip_hash 等へ変換済みのもの) */
+export interface StabInput {
+  holeId: number;
+  roundNo: number;
+  ipHash: string;
+  fp: string;
+  country: string | null;
+  /** 剣の色(SWORD_COLORSのindex)。未指定は null(デフォルト表示) */
+  color: number | null;
+  /** スキン+チャームを詰めた2バイト(src/lib/style.ts)。未指定は null */
+  style: number | null;
+  /** フィードに出すニックネーム(サニタイズ済み)。未登録は null */
+  nickname: string | null;
+}
+
+/** stab の結果。ルートが StabResult(HTTP形)へ変換する */
+export type StabOutcome =
+  | { kind: "stale"; activeRoundNo: number }
+  | { kind: "cooldown"; remainingSec: number }
+  | { kind: "taken"; mask: Uint8Array }
+  | { kind: "win"; claimToken: string; roundNo: number }
+  | { kind: "safe"; mask: Uint8Array; stabCount: number };
+
+export interface ClaimOutcome {
+  ok: boolean;
+  message?: string;
+}
+
+export interface TrophyPage {
+  total: number;
+  items: TrophyRecord[];
+}
+
+export interface IGameStore {
+  getSnapshot(): Promise<SnapshotData>;
+  /** 穴に刺す。バリデーション済みの入力を受け、勝敗・重複・冷却を判定する */
+  stab(input: StabInput): Promise<StabOutcome>;
+  /** 勝者名を刻む(token一致 & winner_name 未設定のときだけ成功) */
+  claim(roundNo: number, token: string, name: string): Promise<ClaimOutcome>;
+  /** won_at が入ったラウンドを新しい順でページング */
+  getTrophies(page: number, perPage: number): Promise<TrophyPage>;
+}
+
+// ── 共通ヘルパ ───────────────────────────────────────
+
+/** 新ラウンドのあたり穴を暗号乱数で決める(0..HOLE_COUNT-1) */
+const newWinningHole = (): number => randomInt(0, HOLE_COUNT);
+
+/** 勝者だけが知るクレームトークン */
+const newClaimToken = (): string => randomBytes(16).toString("base64url");
+
+/** neon は timestamptz を Date で返す(生文字列の可能性にも備える) */
+const toIso = (v: string | Date): string =>
+  v instanceof Date ? v.toISOString() : new Date(v).toISOString();
+
+const toMs = (v: string | Date): number =>
+  v instanceof Date ? v.getTime() : new Date(v).getTime();
+
+/** 最終刺し時刻(epoch ms)からクールダウンの残り秒を計算(0なら制限なし) */
+function remainingCooldownSec(lastAtMs: number): number {
+  const remaining = COOLDOWN_SEC - (Date.now() - lastAtMs) / 1000;
+  return remaining > 0 ? Math.ceil(remaining) : 0;
+}
+
+// ── Postgres 実装 (@neondatabase/serverless の HTTP クライアント) ──
+
+/** kk_rounds の行(必要な列のみ) */
+interface RoundRow {
+  round_no: number;
+  winning_hole: number;
+  started_at: string | Date;
+  stab_count: number;
+}
+
+interface WinnerRow {
+  round_no: number;
+  winner_name: string | null;
+  winner_country: string | null;
+  won_at: string | Date;
+  winner_hole: number | null;
+  stab_count: number;
+}
+
+/** アクティブラウンド(winning_hole はサーバー内でのみ扱う) */
+interface ActiveRound {
+  roundNo: number;
+  winningHole: number;
+  startedAt: string;
+  stabCount: number;
+}
+
+class PostgresStore implements IGameStore {
+  private sql: NeonQueryFunction<false, false>;
+  private schemaReady: Promise<void> | null = null;
+
+  constructor(databaseUrl: string) {
+    this.sql = neon(databaseUrl);
+  }
+
+  /** スキーマは初回アクセス時に一度だけ作成。失敗したら次回リトライ */
+  private ensureSchema(): Promise<void> {
+    if (!this.schemaReady) {
+      const p = this.createSchema();
+      p.catch(() => {
+        if (this.schemaReady === p) this.schemaReady = null;
+      });
+      this.schemaReady = p;
+    }
+    return this.schemaReady;
+  }
+
+  private async createSchema(): Promise<void> {
+    await this.sql`
+      CREATE TABLE IF NOT EXISTS kk_rounds (
+        id SERIAL PRIMARY KEY,
+        round_no INT UNIQUE NOT NULL,
+        winning_hole INT NOT NULL,
+        started_at TIMESTAMPTZ DEFAULT now(),
+        won_at TIMESTAMPTZ,
+        winner_name TEXT,
+        winner_country TEXT,
+        winner_hole INT,
+        claim_token TEXT,
+        stab_count INT DEFAULT 0
+      )`;
+    await this.sql`
+      CREATE TABLE IF NOT EXISTS kk_stabs (
+        round_no INT NOT NULL,
+        hole_id INT NOT NULL,
+        ip_hash TEXT,
+        fp TEXT,
+        country TEXT,
+        color SMALLINT,
+        style SMALLINT,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        PRIMARY KEY (round_no, hole_id)
+      )`;
+    // 既存テーブルへの後付けマイグレーション(既存の刺しは NULL のまま残る)
+    await this.sql`ALTER TABLE kk_stabs ADD COLUMN IF NOT EXISTS color SMALLINT`;
+    await this.sql`ALTER TABLE kk_stabs ADD COLUMN IF NOT EXISTS style SMALLINT`;
+    // style は2バイトに広げた。SMALLINT は符号付きで bit15 が負になるので INT へ移す。
+    // ALTER は毎回打つと(変化が無くても)テーブルロックを取るので、
+    // まだ smallint のときだけ実行する
+    const styleCol = (await this.sql`
+      SELECT data_type FROM information_schema.columns
+      WHERE table_name = 'kk_stabs' AND column_name = 'style'
+    `) as { data_type: string }[];
+    if (styleCol[0]?.data_type === "smallint") {
+      await this.sql`ALTER TABLE kk_stabs ALTER COLUMN style TYPE INT`;
+    }
+    await this.sql`ALTER TABLE kk_stabs ADD COLUMN IF NOT EXISTS nickname VARCHAR(24)`;
+    // レート制限(直近の刺し検索)用インデックス
+    await this.sql`CREATE INDEX IF NOT EXISTS kk_stabs_ip_idx ON kk_stabs (ip_hash, created_at)`;
+    await this.sql`CREATE INDEX IF NOT EXISTS kk_stabs_fp_idx ON kk_stabs (fp, created_at)`;
+  }
+
+  /** won_at IS NULL のラウンド(=アクティブ)を探す。無ければ null */
+  private async findActiveRound(): Promise<ActiveRound | null> {
+    const rows = (await this.sql`
+      SELECT round_no, winning_hole, started_at, stab_count
+      FROM kk_rounds WHERE won_at IS NULL
+      ORDER BY round_no ASC LIMIT 1
+    `) as RoundRow[];
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      roundNo: r.round_no,
+      winningHole: r.winning_hole,
+      startedAt: toIso(r.started_at),
+      stabCount: r.stab_count,
+    };
+  }
+
+  /** アクティブラウンドを返す。無ければ作る(初回=第1代、または勝利直後の復旧) */
+  private async activeRound(): Promise<ActiveRound> {
+    const found = await this.findActiveRound();
+    if (found) return found;
+    // round_no の UNIQUE 制約により、同時実行でも1行しか入らない
+    await this.sql`
+      INSERT INTO kk_rounds (round_no, winning_hole)
+      VALUES ((SELECT coalesce(max(round_no), 0) + 1 FROM kk_rounds), ${newWinningHole()})
+      ON CONFLICT (round_no) DO NOTHING
+    `;
+    const created = await this.findActiveRound();
+    if (!created) throw new Error("kk: active round could not be created");
+    return created;
+  }
+
+  /** そのラウンドの刺さり状態(ビットマスク+色+スキン/チャーム) */
+  private async stabsStateOf(
+    roundNo: number,
+  ): Promise<{ mask: Uint8Array; colors: Uint8Array; styles: Uint16Array }> {
+    const rows = (await this.sql`
+      SELECT hole_id, color, style FROM kk_stabs WHERE round_no = ${roundNo}
+    `) as { hole_id: number; color: number | null; style: number | null }[];
+    const mask = emptyMask();
+    const colors = new Uint8Array(HOLE_COUNT);
+    const styles = new Uint16Array(HOLE_COUNT);
+    for (const r of rows) {
+      if (r.hole_id < 0 || r.hole_id >= HOLE_COUNT) continue;
+      setBit(mask, r.hole_id);
+      if (r.color !== null && r.color >= 0 && r.color < SWORD_COLORS.length) {
+        colors[r.hole_id] = r.color + 1; // 0は「色なし」に予約
+      }
+      if (r.style !== null && r.style > 0 && r.style <= 0xffff) {
+        styles[r.hole_id] = r.style;
+      }
+    }
+    return { mask, colors, styles };
+  }
+
+  private async maskOf(roundNo: number): Promise<Uint8Array> {
+    return (await this.stabsStateOf(roundNo)).mask;
+  }
+
+  /** 現ラウンドの新しい順12件。アクティブラウンドに勝ちの刺しは存在しない
+   *  (当たった瞬間に次ラウンドがアクティブになる)ので win は常に false */
+  private async recentOf(roundNo: number): Promise<StabEvent[]> {
+    const rows = (await this.sql`
+      SELECT hole_id, country, created_at, nickname FROM kk_stabs
+      WHERE round_no = ${roundNo}
+      ORDER BY created_at DESC LIMIT 12
+    `) as {
+      hole_id: number;
+      country: string | null;
+      created_at: string | Date;
+      nickname: string | null;
+    }[];
+    return rows.map((r) => ({
+      holeId: r.hole_id,
+      name: r.nickname ?? null,
+      country: r.country,
+      at: toIso(r.created_at),
+      win: false,
+    }));
+  }
+
+  /** 指定ラウンドの勝者情報。未決着・存在しないなら null */
+  private async winnerOf(roundNo: number): Promise<WinnerInfo | null> {
+    if (roundNo < 1) return null;
+    const rows = (await this.sql`
+      SELECT round_no, winner_name, winner_country, won_at, winner_hole, stab_count
+      FROM kk_rounds
+      WHERE round_no = ${roundNo} AND won_at IS NOT NULL
+    `) as WinnerRow[];
+    const r = rows[0];
+    if (!r) return null;
+    return {
+      roundNo: r.round_no,
+      name: r.winner_name,
+      country: r.winner_country,
+      wonAt: toIso(r.won_at),
+      holeId: r.winner_hole ?? 0,
+      stabCount: r.stab_count,
+    };
+  }
+
+  async getSnapshot(): Promise<SnapshotData> {
+    await this.ensureSchema();
+    const active = await this.activeRound();
+    const [stabs, recent, prevWinner] = await Promise.all([
+      this.stabsStateOf(active.roundNo),
+      this.recentOf(active.roundNo),
+      this.winnerOf(active.roundNo - 1),
+    ]);
+    return {
+      roundNo: active.roundNo,
+      startedAt: active.startedAt,
+      stabCount: active.stabCount,
+      mask: stabs.mask,
+      stabColors: stabs.colors,
+      stabStyles: stabs.styles,
+      recent,
+      prevWinner,
+    };
+  }
+
+  /** 同一 ip_hash / fp の直近刺しからクールダウン残り秒を返す */
+  private async cooldownOf(ipHash: string, fp: string): Promise<number> {
+    const rows = (await this.sql`
+      SELECT greatest(
+        (SELECT max(created_at) FROM kk_stabs WHERE ip_hash = ${ipHash}),
+        (SELECT max(created_at) FROM kk_stabs WHERE fp = ${fp})
+      ) AS last_at
+    `) as { last_at: string | Date | null }[];
+    const lastAt = rows[0]?.last_at;
+    if (!lastAt) return 0;
+    return remainingCooldownSec(toMs(lastAt));
+  }
+
+  async stab(input: StabInput): Promise<StabOutcome> {
+    await this.ensureSchema();
+    const active = await this.activeRound();
+
+    // クライアントの見ているラウンドが古い
+    if (input.roundNo !== active.roundNo) {
+      return { kind: "stale", activeRoundNo: active.roundNo };
+    }
+
+    // レート制限(ベストエフォート。厳密な排他は不要)
+    const remainingSec = await this.cooldownOf(input.ipHash, input.fp);
+    if (remainingSec > 0) return { kind: "cooldown", remainingSec };
+
+    // 刺す。INSERT とカウント加算を1文(CTE)で行いアトミックに。
+    // PK(round_no, hole_id) 衝突なら ins が0行 → UPDATE も0行 = 先客あり
+    const inserted = (await this.sql.query(
+      `WITH ins AS (
+         INSERT INTO kk_stabs (round_no, hole_id, ip_hash, fp, country, color, style, nickname)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (round_no, hole_id) DO NOTHING
+         RETURNING hole_id
+       )
+       UPDATE kk_rounds SET stab_count = stab_count + 1
+       WHERE round_no = $1 AND EXISTS (SELECT 1 FROM ins)
+       RETURNING stab_count`,
+      [
+        input.roundNo,
+        input.holeId,
+        input.ipHash,
+        input.fp,
+        input.country,
+        input.color,
+        input.style,
+        input.nickname,
+      ],
+    )) as { stab_count: number }[];
+
+    if (inserted.length === 0) {
+      // 先客あり。ただし「あたり穴が刺さっているのに未決着」は、勝利確定
+      // (won_at更新)の直前にプロセスが落ちた残骸で、放置するとラウンドが
+      // 永久に決着しない。直後の同時アクセスと区別するため、先客の刺しが
+      // 10秒以上前のときだけ、いまの挑戦者を勝者として復旧させる。
+      if (input.holeId === active.winningHole) {
+        const orphaned = (await this.sql`
+          SELECT 1 FROM kk_stabs
+          WHERE round_no = ${active.roundNo} AND hole_id = ${input.holeId}
+            AND created_at < now() - interval '10 seconds'
+        `) as unknown[];
+        if (orphaned.length > 0) {
+          const outcome = await this.tryWin(active.roundNo, input);
+          if (outcome) return outcome;
+        }
+      }
+      return { kind: "taken", mask: await this.maskOf(active.roundNo) };
+    }
+    const stabCount = inserted[0].stab_count;
+
+    // あたり判定
+    if (input.holeId === active.winningHole) {
+      const outcome = await this.tryWin(active.roundNo, input);
+      if (outcome) return outcome;
+    }
+
+    return { kind: "safe", mask: await this.maskOf(active.roundNo), stabCount };
+  }
+
+  /**
+   * 勝利の確定を試みる。won_at IS NULL の条件付きUPDATEで、勝てるのは
+   * 必ず1人だけ。勝てたら次の代のラウンドも用意する。
+   */
+  private async tryWin(
+    roundNo: number,
+    input: StabInput,
+  ): Promise<Extract<StabOutcome, { kind: "win" }> | null> {
+    const token = newClaimToken();
+    const won = (await this.sql`
+      UPDATE kk_rounds
+      SET won_at = now(),
+          claim_token = ${token},
+          winner_country = ${input.country},
+          winner_hole = ${input.holeId}
+      WHERE round_no = ${roundNo} AND won_at IS NULL
+      RETURNING round_no
+    `) as { round_no: number }[];
+    if (won.length === 0) return null;
+    // 次の代のこすくまくんを用意(既にあれば何もしない)
+    await this.sql`
+      INSERT INTO kk_rounds (round_no, winning_hole)
+      VALUES (${roundNo + 1}, ${newWinningHole()})
+      ON CONFLICT (round_no) DO NOTHING
+    `;
+    return { kind: "win", claimToken: token, roundNo };
+  }
+
+  async claim(roundNo: number, token: string, name: string): Promise<ClaimOutcome> {
+    await this.ensureSchema();
+    // token一致 & 未クレームのときだけ1行更新される(条件付きUPDATEで排他)
+    const rows = (await this.sql`
+      UPDATE kk_rounds SET winner_name = ${name}
+      WHERE round_no = ${roundNo}
+        AND claim_token = ${token}
+        AND won_at IS NOT NULL
+        AND winner_name IS NULL
+      RETURNING round_no
+    `) as { round_no: number }[];
+    if (rows.length === 0) {
+      return { ok: false, message: "トークンがちがうか、もう名前が刻まれているよ" };
+    }
+    return { ok: true };
+  }
+
+  async getTrophies(page: number, perPage: number): Promise<TrophyPage> {
+    await this.ensureSchema();
+    const offset = (page - 1) * perPage;
+    const [totalRaw, itemsRaw] = await Promise.all([
+      this.sql`
+        SELECT count(*)::int AS total FROM kk_rounds WHERE won_at IS NOT NULL
+      `,
+      this.sql`
+        SELECT round_no, winner_name, winner_country, won_at, stab_count
+        FROM kk_rounds WHERE won_at IS NOT NULL
+        ORDER BY won_at DESC
+        LIMIT ${perPage} OFFSET ${offset}
+      `,
+    ]);
+    const totalRows = totalRaw as { total: number }[];
+    const itemRows = itemsRaw as WinnerRow[];
+    return {
+      total: totalRows[0]?.total ?? 0,
+      items: itemRows.map((r) => ({
+        roundNo: r.round_no,
+        name: r.winner_name ?? "ななしさん",
+        country: r.winner_country,
+        wonAt: toIso(r.won_at),
+        stabCount: r.stab_count,
+      })),
+    };
+  }
+}
+
+// ── メモリ実装 (DATABASE_URL 無しのローカル開発用) ─────
+
+interface MemRound {
+  roundNo: number;
+  winningHole: number;
+  startedAt: number; // epoch ms
+  wonAt: number | null;
+  winnerName: string | null;
+  winnerCountry: string | null;
+  winnerHole: number | null;
+  claimToken: string | null;
+  stabCount: number;
+}
+
+interface MemStab {
+  holeId: number;
+  country: string | null;
+  color: number | null;
+  style: number | null;
+  nickname: string | null;
+  at: number; // epoch ms
+}
+
+interface MemoryData {
+  rounds: MemRound[];
+  /** roundNo → (holeId → 刺し)。Postgres の PK(round_no, hole_id) に相当 */
+  stabs: Map<number, Map<number, MemStab>>;
+  lastByIp: Map<string, number>;
+  lastByFp: Map<string, number>;
+}
+
+function newMemRound(roundNo: number): MemRound {
+  return {
+    roundNo,
+    winningHole: newWinningHole(),
+    startedAt: Date.now(),
+    wonAt: null,
+    winnerName: null,
+    winnerCountry: null,
+    winnerHole: null,
+    claimToken: null,
+    stabCount: 0,
+  };
+}
+
+function memWinnerInfo(r: MemRound): WinnerInfo {
+  return {
+    roundNo: r.roundNo,
+    name: r.winnerName,
+    country: r.winnerCountry,
+    wonAt: new Date(r.wonAt ?? 0).toISOString(),
+    holeId: r.winnerHole ?? 0,
+    stabCount: r.stabCount,
+  };
+}
+
+class MemoryStore implements IGameStore {
+  private data: MemoryData = {
+    rounds: [],
+    stabs: new Map(),
+    lastByIp: new Map(),
+    lastByFp: new Map(),
+  };
+
+  private activeRound(): MemRound {
+    const unwon = this.data.rounds
+      .filter((r) => r.wonAt === null)
+      .sort((a, b) => a.roundNo - b.roundNo);
+    if (unwon.length > 0) return unwon[0];
+    const maxNo = this.data.rounds.reduce((m, r) => Math.max(m, r.roundNo), 0);
+    const round = newMemRound(maxNo + 1);
+    this.data.rounds.push(round);
+    return round;
+  }
+
+  private stabsOf(roundNo: number): Map<number, MemStab> {
+    let m = this.data.stabs.get(roundNo);
+    if (!m) {
+      m = new Map();
+      this.data.stabs.set(roundNo, m);
+    }
+    return m;
+  }
+
+  private maskOf(roundNo: number): Uint8Array {
+    const mask = emptyMask();
+    for (const holeId of this.stabsOf(roundNo).keys()) {
+      if (holeId >= 0 && holeId < HOLE_COUNT) setBit(mask, holeId);
+    }
+    return mask;
+  }
+
+  private colorsOf(roundNo: number): Uint8Array {
+    const colors = new Uint8Array(HOLE_COUNT);
+    for (const s of this.stabsOf(roundNo).values()) {
+      if (s.holeId < 0 || s.holeId >= HOLE_COUNT) continue;
+      if (s.color !== null && s.color >= 0 && s.color < SWORD_COLORS.length) {
+        colors[s.holeId] = s.color + 1;
+      }
+    }
+    return colors;
+  }
+
+  private stylesOf(roundNo: number): Uint16Array {
+    const styles = new Uint16Array(HOLE_COUNT);
+    for (const s of this.stabsOf(roundNo).values()) {
+      if (s.holeId < 0 || s.holeId >= HOLE_COUNT) continue;
+      if (s.style !== null && s.style > 0 && s.style <= 0xffff) {
+        styles[s.holeId] = s.style;
+      }
+    }
+    return styles;
+  }
+
+  async getSnapshot(): Promise<SnapshotData> {
+    const active = this.activeRound();
+    const recent: StabEvent[] = [...this.stabsOf(active.roundNo).values()]
+      .sort((a, b) => b.at - a.at)
+      .slice(0, 12)
+      .map((s) => ({
+        holeId: s.holeId,
+        name: s.nickname ?? null,
+        country: s.country,
+        at: new Date(s.at).toISOString(),
+        win: false, // アクティブラウンドに勝ちの刺しは存在しない
+      }));
+    const prev =
+      this.data.rounds.find(
+        (r) => r.roundNo === active.roundNo - 1 && r.wonAt !== null,
+      ) ?? null;
+    return {
+      roundNo: active.roundNo,
+      startedAt: new Date(active.startedAt).toISOString(),
+      stabCount: active.stabCount,
+      mask: this.maskOf(active.roundNo),
+      stabColors: this.colorsOf(active.roundNo),
+      stabStyles: this.stylesOf(active.roundNo),
+      recent,
+      prevWinner: prev ? memWinnerInfo(prev) : null,
+    };
+  }
+
+  async stab(input: StabInput): Promise<StabOutcome> {
+    const active = this.activeRound();
+
+    if (input.roundNo !== active.roundNo) {
+      return { kind: "stale", activeRoundNo: active.roundNo };
+    }
+
+    // レート制限
+    const last = Math.max(
+      this.data.lastByIp.get(input.ipHash) ?? 0,
+      this.data.lastByFp.get(input.fp) ?? 0,
+    );
+    if (last > 0) {
+      const remainingSec = remainingCooldownSec(last);
+      if (remainingSec > 0) return { kind: "cooldown", remainingSec };
+    }
+
+    // 刺す(同じ穴は1人だけ)
+    const stabs = this.stabsOf(active.roundNo);
+    if (stabs.has(input.holeId)) {
+      return { kind: "taken", mask: this.maskOf(active.roundNo) };
+    }
+    const now = Date.now();
+    stabs.set(input.holeId, {
+      holeId: input.holeId,
+      country: input.country,
+      color: input.color,
+      style: input.style,
+      nickname: input.nickname,
+      at: now,
+    });
+    active.stabCount += 1;
+    this.data.lastByIp.set(input.ipHash, now);
+    this.data.lastByFp.set(input.fp, now);
+
+    // あたり判定
+    if (input.holeId === active.winningHole && active.wonAt === null) {
+      const token = newClaimToken();
+      active.wonAt = now;
+      active.claimToken = token;
+      active.winnerCountry = input.country;
+      active.winnerHole = input.holeId;
+      // 次の代のこすくまくんを用意
+      this.data.rounds.push(newMemRound(active.roundNo + 1));
+      return { kind: "win", claimToken: token, roundNo: active.roundNo };
+    }
+
+    return {
+      kind: "safe",
+      mask: this.maskOf(active.roundNo),
+      stabCount: active.stabCount,
+    };
+  }
+
+  async claim(roundNo: number, token: string, name: string): Promise<ClaimOutcome> {
+    const r = this.data.rounds.find(
+      (x) => x.roundNo === roundNo && x.wonAt !== null && x.claimToken === token,
+    );
+    if (!r) return { ok: false, message: "トークンがちがうよ" };
+    if (r.winnerName !== null) {
+      return { ok: false, message: "もう名前が刻まれているよ" };
+    }
+    r.winnerName = name;
+    return { ok: true };
+  }
+
+  async getTrophies(page: number, perPage: number): Promise<TrophyPage> {
+    const won = this.data.rounds
+      .filter((r) => r.wonAt !== null)
+      .sort((a, b) => (b.wonAt ?? 0) - (a.wonAt ?? 0));
+    const start = (page - 1) * perPage;
+    return {
+      total: won.length,
+      items: won.slice(start, start + perPage).map((r) => ({
+        roundNo: r.roundNo,
+        name: r.winnerName ?? "ななしさん",
+        country: r.winnerCountry,
+        wonAt: new Date(r.wonAt ?? 0).toISOString(),
+        stabCount: r.stabCount,
+      })),
+    };
+  }
+}
+
+// ── ファクトリ ───────────────────────────────────────
+
+// Next.js はルートごとにモジュールを分割バンドルするため、シングルトンは
+// globalThis に載せてプロセス内で共有する(dev のHMRでも状態が消えない)
+type StoreGlobal = typeof globalThis & {
+  __kkPgStore?: PostgresStore;
+  __kkMemStore?: MemoryStore;
+};
+
+/** DATABASE_URL があれば Postgres、なければメモリのストアを返す */
+export function getStore(): IGameStore {
+  const g = globalThis as StoreGlobal;
+  const url = process.env.DATABASE_URL;
+  if (url) {
+    if (!g.__kkPgStore) g.__kkPgStore = new PostgresStore(url);
+    return g.__kkPgStore;
+  }
+  if (!g.__kkMemStore) g.__kkMemStore = new MemoryStore();
+  return g.__kkMemStore;
+}

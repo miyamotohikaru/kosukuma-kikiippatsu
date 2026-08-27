@@ -1,0 +1,172 @@
+/* タイトルのニックネーム入力。
+   ui.css とは分けてある(同時に別の作業が ui.css を触っているため)。 */
+
+.nick {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 22px;
+}
+
+/* 後ろにはこすくまくんと月がいる。うっすい文字だと3Dに溶けて
+   「入力できる」と気づかれないので、はっきりした白で置く */
+.nick-label {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 6px rgba(6, 8, 18, 0.9);
+}
+
+.nick-input {
+  width: min(70vw, 260px);
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(255, 255, 255, 0.22);
+  background: rgba(8, 10, 20, 0.82);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  text-align: center;
+  -webkit-appearance: none;
+  appearance: none;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease;
+}
+
+.nick-input::placeholder {
+  color: rgba(255, 255, 255, 0.34);
+}
+
+.nick-input:focus {
+  outline: none;
+  border-color: rgba(245, 196, 0, 0.75);
+  background: rgba(8, 10, 20, 0.92);
+}
+
+/* 入っているときだけ、どう出るかを見せる。
+   「登録してどうなるのか」が分からないまま入力させないため */
+.nick-preview {
+  min-height: 15px;
+  font-size: 11.5px;
+  color: rgba(245, 196, 0, 0.95);
+  letter-spacing: 0.03em;
+  text-shadow: 0 1px 6px rgba(6, 8, 18, 0.9);
+}
+
+/* 引き出しの中では見出しが別にあるので、上の余白は要らない */
+.nick-in-drawer {
+  margin-top: 0;
+  align-items: stretch;
+}
+
+.nick-in-drawer .nick-input {
+  width: 100%;
+}
+
+.nick-in-drawer .nick-preview {
+  text-align: center;
+}
+
+/* モーダルの中は地がクリーム色。3Dの上に置いたときの白文字のままだと
+   まったく読めないので、ここだけ色を反転させる */
+.nick-lead {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: rgba(43, 38, 32, 0.72);
+  text-align: center;
+}
+
+.nick-in-modal {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.nick-in-modal .nick-input,
+.nick-in-drawer .nick-input {
+  border-color: rgba(43, 38, 32, 0.22);
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: inset 0 1px 3px rgba(43, 38, 32, 0.1);
+  color: #2b2620;
+}
+
+.nick-in-modal .nick-input::placeholder,
+.nick-in-drawer .nick-input::placeholder {
+  color: rgba(43, 38, 32, 0.34);
+}
+
+.nick-in-modal .nick-input:focus,
+.nick-in-drawer .nick-input:focus {
+  border-color: rgba(216, 160, 0, 0.9);
+  background: #fff;
+}
+
+/* 地がクリーム色のところで金文字に暗い影を落とすと、
+   文字のまわりに黒いにじみが出て「ぼやけて」見える。影は消す */
+.nick-in-modal .nick-preview,
+.nick-in-drawer .nick-preview {
+  color: #a97d00;
+  text-shadow: none;
+}
+
+/* タイトルに置くチップ。入力欄そのものは置かない(後ろのこすくまくんに
+   文字が重なって読めなくなるため)。
+   ただの飾りに見えると誰も押さないので、金のふちと ✎ で
+   「ここは押して入れるところ」だと分かる強さにしてある */
+.nick-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 16px;
+  padding: 9px 20px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(245, 196, 0, 0.55);
+  background: rgba(8, 10, 20, 0.78);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  /* タイトルの膜は pointer-events:none(後ろの月を回せるように)。
+     ここで auto に戻さないと、タップが3Dへ素通りして押せない */
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    transform 0.12s ease;
+}
+
+.nick-chip:active {
+  transform: translateY(1px);
+}
+
+.nick-chip::before {
+  content: "✎";
+  font-size: 14px;
+  color: #f5c400;
+}
+
+.nick-chip:hover,
+.nick-chip:focus-visible {
+  border-color: rgba(245, 196, 0, 0.95);
+  background: rgba(8, 10, 20, 0.9);
+}
+
+/* 名前が入っているときは、押せば直せることが分かればいい */
+.nick-chip.is-set {
+  border-color: rgba(245, 196, 0, 0.85);
+  color: #f5c400;
+}

@@ -1,0 +1,386 @@
+/* ============================================================
+   こすくまくんの吹き出し
+   こすくまくんは目が点で口がない。だから吹き出しが「声」になる。
+
+   かたちの作り(2026-08 作り直し):
+     **輪郭は1本の閉じたSVGパス**。角丸の本体と尻尾を1周でつないで描く。
+     以前は「CSSのborderを持つ箱」「尻尾のSVG」「継ぎ目を隠す板」の3枚重ねで、
+     輪郭が別々に引かれていたため、本体と尻尾の境目に段(ズレ)が出ていた。
+     いまは fill と stroke が1回しかかからないので、継ぎ目が原理的に存在しない。
+     パスを組み立てるのは SpeechBubble.tsx(大きさが文字量で変わるため)。
+
+   ここ(CSS)が持つのは **tone ごとの地色・角の丸み・動き** と、文字の大きさ。
+   位置(transform)はJSが .sb-root/.sb-wrap に、動きのくせ(CSSアニメ)は
+   .sb-body に。同じ要素の transform を奪い合わせないための分業。
+   ============================================================ */
+
+.sb-layer {
+  position: absolute;
+  inset: 0;
+  /* 3D(canvas)の上、HUD(z-index:10)の下 */
+  z-index: 5;
+  pointer-events: none;
+  font-family: var(--font-game);
+  /* バネのイージング(ui.cssに依存しないよう自前で持つ) */
+  --sb-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* 頭のよこの点。JSが translate + scale する */
+.sb-root {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  /* 画面外へ出たとき、パッと消えずに ふっと消える */
+  transition: opacity 0.14s linear;
+}
+
+/* 吹き出し本体のオフセット。画面のはしでは内側へずれる(尻尾が向きを追う) */
+.sb-wrap {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+/* ── 本体 ────────────────────────────────────────────── */
+/* ここは「大きさの持ち主」。文字量で決まった実寸(offsetWidth/Height)を
+   JSが読んで、そのまま輪郭パスの寸法にする。
+   border は持たない(輪郭はSVGの stroke が1本だけ引く)。 */
+.sb-body {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: max-content;
+  min-width: 3.6em;
+  /* スマホ縦(390px)で 1行あたり13〜14文字。lines.ts の \n(最長13文字)が
+     そのまま1行に収まる幅。ここを狭めると勝手に3行へ折れて背が高くなり、
+     上のUIとぶつかりやすくなる */
+  max-width: min(64vw, 300px);
+  padding: 10px 16px 11px;
+  /* transform-origin は尻尾の付け根にJSが合わせる(頭から生えて見せる) */
+  transform-origin: 16px 100%;
+  /* 出たあとも止まって見えないよう、ごくゆっくり息をする */
+  animation:
+    sb-pop 0.42s var(--sb-spring) both,
+    sb-breathe 3.6s ease-in-out 0.5s infinite;
+
+  /* tone の既定(normal) */
+  --sb-fill: #fffef2;
+  --sb-line: #10163a;
+  --sb-ink: #35322b;
+  /* 角の丸み。CSSの border-radius と同じ並び(左上/右上/右下/左下)で書くと、
+     SpeechBubble.tsx がそのまま読んでパスの角丸にする */
+  --sb-radius: 20px;
+}
+
+/* 輪郭。本体の角丸 + 尻尾を1本の閉じたパスで描いた、ただ1枚の絵。
+   影もこれ1枚に落ちるので、尻尾だけ暗く沈むことがない。
+
+   本体より四方に広げてあるのが要点。尻尾と影は本体の外へ出るので、
+   この箱が小さいと filter がつくる合成グループのはんいから外れて、
+   尻尾が(とくに左右むきのときに)まるごと消える。
+   広げた値は SpeechBubble.tsx の SHAPE_PAD と合わせること。 */
+.sb-shape {
+  position: absolute;
+  inset: -96px;
+  overflow: visible;
+  filter: drop-shadow(0 5px 11px rgba(5, 7, 26, 0.55));
+}
+.sb-shape path {
+  fill: var(--sb-fill);
+  stroke: var(--sb-line);
+  stroke-width: 3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+/* セリフ。position:relative で輪郭より前面に置く(パスの中には入れない)。
+   改行は wrapJa.ts が決めて \n で渡してくる(日本語の禁則と文節を見て折る)。
+   pre-wrap はその \n を守るための指定。それでも入りきらないときだけ、
+   CSSの折り返しが保険として働く(text-wrap:balance はJSに任せたので使わない)。
+
+   下限を 15px にしてあるのは、スマホでは追従スケールが 0.95 まで落ちるため。
+   15 x 0.95 = 14.3px が実機で読める下限になる */
+.sb-text {
+  position: relative;
+  color: var(--sb-ink);
+  font-size: clamp(15px, 4.1vw, 17px);
+  font-weight: 800;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  text-align: center;
+  white-space: pre-wrap;
+}
+
+/* ── tone: happy(うれしい) ──────────────────────────── */
+.sb-happy {
+  --sb-fill: #fff8d9;
+  --sb-line: #4b3505;
+  --sb-ink: #4a3808;
+  --sb-radius: 22px;
+  animation:
+    sb-pop 0.44s var(--sb-spring) both,
+    sb-hop 1.6s ease-in-out 0.5s infinite;
+}
+/* きらきら(2つの星が交互にまたたく) */
+.sb-spark {
+  position: absolute;
+  right: -13px;
+  top: -15px;
+  overflow: visible;
+}
+.sb-spark path {
+  fill: var(--accent, #ffd93d);
+  stroke: var(--sb-line);
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+  paint-order: stroke;
+}
+.sb-spark-a {
+  transform-origin: 27px 14px;
+  animation: sb-twinkle 1.9s ease-in-out infinite;
+}
+.sb-spark-b {
+  transform-origin: 12px 25px;
+  animation: sb-twinkle 1.9s ease-in-out 0.65s infinite;
+}
+
+/* ── tone: worry(こわい・しんぱい) ─────────────────── */
+.sb-worry {
+  --sb-fill: #eef1ff;
+  --sb-line: #1b2350;
+  --sb-ink: #3a4067;
+  --sb-radius: 19px 17px 19px 16px;
+  animation:
+    sb-pop 0.4s var(--sb-spring) both,
+    sb-shiver 0.62s ease-in-out 0.45s infinite;
+}
+
+/* ── tone: shock(びっくり) ─────────────────────────── */
+/* ギザギザは輪郭パスそのものが折れている(clip-path でも drop-shadow の
+   多重がけでもない)。角丸は使わないので radius は 0 にしておく。
+   ふちが内側へ食い込むぶん、文字まわりの余白を少し多めに取る */
+.sb-shock {
+  --sb-fill: #fff1f0;
+  --sb-line: #7a1220;
+  --sb-ink: #7a1f2a;
+  --sb-radius: 0px;
+  padding: 14px 20px 15px;
+  animation:
+    sb-pop-hard 0.36s var(--sb-spring) both,
+    sb-quake 0.4s ease-in-out 0.36s 3;
+}
+
+/* ── tone: sleepy(ねむい) ──────────────────────────── */
+/* 尻尾は本体から離れた「考えごと」風のまるい玉。輪郭パスの中に、
+   本体とは別の閉じた部分パスとして入っている(離れているのが正しい形) */
+.sb-sleepy {
+  --sb-fill: #f3f1ff;
+  --sb-line: #2a2450;
+  --sb-ink: #47437a;
+  /* すこし いびつな丸で、ふわっとした雲みたいに */
+  --sb-radius: 26px 22px 26px 20px;
+  animation:
+    sb-pop 0.5s var(--sb-spring) both,
+    sb-drowsy 4.4s ease-in-out 0.55s infinite;
+}
+/* zzz(小さいのから大きいのへ、ふわふわ昇っていく) */
+.sb-zzz {
+  position: absolute;
+  right: -2px;
+  top: -12px;
+  width: 0;
+  height: 0;
+}
+.sb-zzz i {
+  position: absolute;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--sb-fill);
+  -webkit-text-stroke: 3px var(--sb-line);
+  paint-order: stroke fill;
+  animation: sb-z 3s ease-in-out infinite;
+}
+.sb-zzz i:nth-child(1) {
+  left: 0;
+  bottom: 0;
+  font-size: 11px;
+}
+.sb-zzz i:nth-child(2) {
+  left: 7px;
+  bottom: 7px;
+  font-size: 14px;
+  animation-delay: 0.6s;
+}
+.sb-zzz i:nth-child(3) {
+  left: 16px;
+  bottom: 15px;
+  font-size: 17px;
+  animation-delay: 1.2s;
+}
+
+/* ── 消えるとき: 尻尾の付け根(=頭)へ吸い込まれて消える ── */
+.sb-body.sb-leave {
+  animation: sb-out 0.22s cubic-bezier(0.4, 0, 0.85, 0.4) both;
+}
+
+/* ── キーフレーム ────────────────────────────────────── */
+/* ぽんっと出る(ちょっと回りながら) */
+@keyframes sb-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.2) rotate(-10deg);
+  }
+  /* 文字はすぐ読めるようにしたいので、透明度だけ先に上げきる(約0.09秒)。
+     バネの動きはそのまま最後まで続ける */
+  22% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 1;
+    transform: scale(1.1) rotate(2.5deg);
+  }
+  78% {
+    transform: scale(0.97) rotate(-1deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+/* びっくりは もっと勢いよく */
+@keyframes sb-pop-hard {
+  0% {
+    opacity: 0;
+    transform: scale(0.15) rotate(-14deg);
+  }
+  20% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.18) rotate(4deg);
+  }
+  75% {
+    transform: scale(0.95) rotate(-2deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+/* すっと消える */
+@keyframes sb-out {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.58) translateY(3px);
+  }
+}
+/* ふつうのときの ゆるい呼吸 */
+@keyframes sb-breathe {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-1.5px) scale(1.008);
+  }
+}
+/* うれしいときの ぴょこぴょこ */
+@keyframes sb-hop {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  40% {
+    transform: translateY(-2.5px) scale(1.015, 0.99);
+  }
+  70% {
+    transform: translateY(0.5px) scale(0.99, 1.008);
+  }
+}
+/* しんぱいなときの こまかいふるえ */
+@keyframes sb-shiver {
+  0%,
+  100% {
+    transform: rotate(0deg) translateX(0);
+  }
+  25% {
+    transform: rotate(-0.7deg) translateX(-0.7px);
+  }
+  75% {
+    transform: rotate(0.7deg) translateX(0.7px);
+  }
+}
+/* びっくりの ぐらぐら(3回だけ) */
+@keyframes sb-quake {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  20% {
+    transform: translate(-1.6px, 0.8px) rotate(-1.1deg);
+  }
+  55% {
+    transform: translate(1.6px, -0.8px) rotate(1.1deg);
+  }
+  80% {
+    transform: translate(-0.8px, 0) rotate(-0.4deg);
+  }
+}
+/* ねむいときの ゆっくり沈んで浮く */
+@keyframes sb-drowsy {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(2.5px) rotate(-0.6deg);
+  }
+}
+/* zzz が ふわっと昇って消える */
+@keyframes sb-z {
+  0% {
+    opacity: 0;
+    transform: translate(0, 4px) scale(0.7) rotate(-8deg);
+  }
+  22% {
+    opacity: 1;
+  }
+  65% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(7px, -15px) scale(1.05) rotate(10deg);
+  }
+}
+/* きらきら */
+@keyframes sb-twinkle {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(0.6) rotate(-8deg);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1.08) rotate(6deg);
+  }
+}
+
+/* ── アクセシビリティ: 動きを減らす設定を尊重 ─────────── */
+@media (prefers-reduced-motion: reduce) {
+  .sb-layer .sb-body,
+  .sb-layer .sb-body * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+  .sb-root {
+    transition: none;
+  }
+}

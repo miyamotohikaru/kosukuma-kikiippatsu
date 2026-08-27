@@ -1,0 +1,2767 @@
+/* ============================================================
+   こすくまくん危機一髪 — UIオーバーレイのスタイル
+   トーン: 丸くて太い・バネのある動き・ひらがなのやさしさ。
+   オーバーレイの root は pointer-events:none にして3D操作を
+   邪魔せず、押せる要素だけ auto にする。
+   ============================================================ */
+
+:root {
+  /* バネのイージング(全アニメ共通) */
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ── ボタン共通 ──────────────────────────────────────── */
+.btn {
+  pointer-events: auto;
+  font-family: var(--font-game);
+  font-weight: 800;
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 0.15s var(--spring),
+    box-shadow 0.15s ease,
+    filter 0.15s ease;
+}
+.btn:active:not(:disabled) {
+  transform: translateY(3px) scale(0.97);
+}
+.btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* 黄色のメインボタン(モーダル等) */
+.btn-primary {
+  background: var(--accent);
+  color: var(--ui-text);
+  font-size: 1.1rem;
+  padding: 0.8em 2.2em;
+  box-shadow: 0 5px 0 rgba(120, 90, 0, 0.45);
+}
+.btn-primary:active:not(:disabled) {
+  box-shadow: 0 2px 0 rgba(120, 90, 0, 0.45);
+}
+
+/* ── タイトル画面 ────────────────────────────────────── */
+.title-screen {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  text-align: center;
+  padding: calc(11vh + env(safe-area-inset-top)) 20px
+    calc(36px + env(safe-area-inset-bottom));
+  background: linear-gradient(to top, rgba(5, 7, 26, 0.45), transparent 32%);
+  animation: fade-in 0.5s ease both;
+}
+.title-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.title-logo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05em;
+}
+.logo-line {
+  display: flex;
+  justify-content: center;
+}
+/* 1文字ずつ: 降ってきてポップ → ときどき跳ねる(delayはインラインで指定) */
+.logo-char {
+  display: inline-block;
+  font-size: clamp(2.1rem, 11vw, 3.6rem);
+  font-weight: 800;
+  line-height: 1.25;
+  color: var(--ui);
+  -webkit-text-stroke: 8px var(--space-deep);
+  paint-order: stroke fill;
+  text-shadow: 0 4px 0 rgba(5, 7, 26, 0.55);
+  animation:
+    logo-pop 0.55s var(--spring) both,
+    char-bounce 2.8s ease-in-out infinite;
+}
+/* 「危機一髪」は赤系で強調 */
+.logo-char-danger {
+  font-size: clamp(2.6rem, 13.5vw, 4.4rem);
+  color: var(--danger);
+}
+.title-copy {
+  margin-top: 16px;
+  color: var(--ui);
+  font-size: clamp(0.85rem, 3.8vw, 1.05rem);
+  font-weight: 700;
+  line-height: 1.7;
+  text-shadow:
+    0 2px 8px rgba(5, 7, 26, 0.95),
+    0 0 3px rgba(5, 7, 26, 0.9);
+  animation: fade-up 0.6s ease 1s both;
+}
+.title-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.btn-start {
+  background: var(--accent);
+  color: var(--ui-text);
+  font-size: clamp(1.25rem, 5.5vw, 1.5rem);
+  padding: 0.85em 2.6em;
+  box-shadow:
+    0 6px 0 rgba(120, 90, 0, 0.55),
+    0 12px 28px rgba(5, 7, 26, 0.45);
+  animation:
+    fade-up 0.5s ease 1.3s backwards,
+    btn-breathe 2s ease-in-out 2s infinite;
+}
+.btn-start:active:not(:disabled) {
+  box-shadow:
+    0 2px 0 rgba(120, 90, 0, 0.55),
+    0 6px 16px rgba(5, 7, 26, 0.45);
+}
+.btn-start:disabled {
+  background: rgba(255, 254, 242, 0.4);
+  color: rgba(58, 55, 48, 0.75);
+  box-shadow: none;
+  animation: fade-up 0.5s ease 0.9s backwards;
+}
+.title-note {
+  color: rgba(255, 254, 242, 0.78);
+  font-size: 12px;
+  font-weight: 700;
+  text-shadow: 0 1px 4px rgba(5, 7, 26, 0.9);
+  animation: fade-up 0.5s ease 1.6s both;
+}
+
+/* ── HUD ─────────────────────────────────────────────── */
+.hud {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  font-family: var(--font-game);
+}
+
+/* 上部バー: 左にバッジ、右にアイコンボタン */
+.hud-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: calc(10px + env(safe-area-inset-top))
+    calc(10px + env(safe-area-inset-right)) 0
+    calc(12px + env(safe-area-inset-left));
+}
+.hud-badges {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  animation: fade-in 0.4s ease both;
+}
+.hud-badge {
+  background: rgba(5, 7, 26, 0.55);
+  border: 1px solid rgba(255, 254, 242, 0.16);
+  color: rgba(255, 254, 242, 0.92);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.hud-badge b {
+  color: var(--accent);
+  font-size: 1.25em;
+  margin: 0 1px;
+}
+/* いつも出している ただ1枚の札。「第N代」と「みんなで N本」を1行に並べる */
+.hud-badge-world {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+}
+.hb-sep {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(255, 254, 242, 0.35);
+  flex: none;
+}
+.hud-top-right {
+  display: flex;
+  gap: 8px;
+}
+.icon-btn {
+  pointer-events: auto;
+  /* 指のあたりは44px以上(iOS/Androidのガイドライン) */
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 254, 242, 0.18);
+  border-radius: 999px;
+  background: rgba(5, 7, 26, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 0.15s var(--spring),
+    background 0.15s ease;
+}
+.icon-btn:active {
+  transform: scale(0.88);
+  background: rgba(5, 7, 26, 0.8);
+}
+
+/* 下部: クールダウンピル + フィード */
+.hud-bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 0 calc(12px + env(safe-area-inset-left))
+    calc(24px + env(safe-area-inset-bottom));
+}
+
+/* ── フィード(直近の刺しイベント) ───────────────────── */
+.feed {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.feed-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(5, 7, 26, 0.45);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 4px 12px 4px 8px;
+  width: fit-content;
+  max-width: min(78vw, 340px);
+  font-size: 11.5px;
+  font-weight: 700;
+  color: rgba(255, 254, 242, 0.88);
+  animation: feed-in 0.35s var(--spring) both;
+}
+/* 古い行ほど薄く */
+.feed-row:nth-child(2) {
+  opacity: 0.78;
+}
+.feed-row:nth-child(3) {
+  opacity: 0.56;
+}
+.feed-row:nth-child(4) {
+  opacity: 0.38;
+}
+.feed-flag {
+  font-size: 14px;
+  line-height: 1;
+}
+/* 勝利行は金色に光る */
+.feed-win {
+  color: var(--accent);
+  border-color: rgba(255, 217, 61, 0.5);
+  text-shadow: 0 0 8px rgba(255, 217, 61, 0.6);
+}
+
+/* ── クールダウンピル ────────────────────────────────── */
+.cooldown-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(5, 7, 26, 0.6);
+  border: 1px solid rgba(255, 254, 242, 0.16);
+  color: rgba(255, 254, 242, 0.9);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 14px 6px 8px;
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: pop-in 0.35s var(--spring) both;
+
+  /* 残り5秒の助走ぐあい(0 = まだ待ち / 1 = 金色)。Reactが毎フレーム渡す。
+     色も光もぜんぶこの1つの数から作るので、どこかだけ先に金色になる、
+     ということが起きない */
+  --cd-warm: 0;
+  /* 待っているあいだのリングの色。月の色から借りている。
+     ここを最初から金色にすると「金色になった＝どうぞ」の合図が効かない */
+  --cd-cool: #94a6e0;
+  /* is-ready の灯りへ、そのまま連続でつながる明るさ(warm=1 で同じ値になる) */
+  box-shadow: 0 0 calc(var(--cd-warm) * 18px)
+    rgba(255, 217, 61, calc(var(--cd-warm) * 0.28));
+  border-color: color-mix(
+    in oklab,
+    rgba(255, 217, 61, 0.55) calc(var(--cd-warm) * 100%),
+    rgba(255, 254, 242, 0.16)
+  );
+}
+/* 待ちが明けた合図。一拍だけ金色に灯って、ふわっと消える。
+   同じ瞬間にこすくまくんが伸び上がって鈴が鳴るので、色と動きをそちらに寄せる */
+.cooldown-pill.is-ready {
+  border-color: rgba(255, 217, 61, 0.55);
+  color: var(--accent);
+  box-shadow: 0 0 18px rgba(255, 217, 61, 0.28);
+  animation:
+    cd-ready-pop 0.42s var(--spring) both,
+    cd-ready-out 0.36s ease 1.14s both;
+}
+.cooldown-pill.is-ready .ring-fg {
+  stroke: var(--accent);
+}
+@keyframes cd-ready-pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+@keyframes cd-ready-out {
+  to { opacity: 0; transform: translateY(-6px) scale(0.94); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cooldown-pill.is-ready {
+    animation: cd-ready-out 0.3s ease 1.2s both;
+  }
+}
+
+.cooldown-pill b {
+  color: var(--accent);
+  font-size: 1.3em;
+  margin: 0 1px;
+  font-variant-numeric: tabular-nums;
+}
+.cooldown-ring {
+  flex: none;
+}
+.cooldown-ring .ring-bg {
+  fill: none;
+  stroke: rgba(255, 254, 242, 0.2);
+  stroke-width: 3;
+}
+.cooldown-ring .ring-fg {
+  fill: none;
+  /* color-mix が使えない環境むけの置きみやげ。下の行が採れれば上書きされる */
+  stroke: var(--accent);
+  stroke: color-mix(
+    in oklab,
+    var(--accent) calc(var(--cd-warm) * 100%),
+    var(--cd-cool)
+  );
+  stroke-width: 3;
+  stroke-linecap: round;
+  /* 色は transition にのせない。助走のあいだは --cd-warm を60msごとに
+     渡していて、それ自体がもう滑らかだから。のせると「どうぞ」で金色に
+     灯る一拍まで鈍って、こすくまくんが伸び上がる瞬間とずれてしまう */
+  transition: stroke-dashoffset 0.25s linear;
+}
+
+/* ── 残り5秒の助走 ─────────────────────────────────────
+   数字は毎秒 1回だけ、はっきり脈打つ。カウントの音が鳴っているように
+   見せたいので、跳ねたあとに必ず「ため」を作る(0.66秒鳴って0.34秒休む)。
+   再生し直しはReact側の key=残り秒でやっている。 */
+.cooldown-pill .cd-num {
+  display: inline-block;
+  transform-origin: 50% 58%;
+}
+.cooldown-pill .cd-num.is-tick {
+  animation: cd-tick 0.66s ease-out both;
+}
+@keyframes cd-tick {
+  0% {
+    transform: scale(1);
+  }
+  18% {
+    transform: scale(1.62);
+  }
+  46% {
+    transform: scale(0.94);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+/* 動きを減らす設定では、拡大縮小はやめて色だけで刻む。
+   数字が白へ抜けて金色にもどる = 1秒の区切りは伝わる */
+@keyframes cd-tick-tone {
+  0% {
+    color: var(--ui);
+  }
+  100% {
+    color: var(--accent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cooldown-pill .cd-num.is-tick {
+    animation: cd-tick-tone 0.66s ease-out both;
+  }
+}
+
+/* ── 確認シート(この あなに 刺す…？) ─────────────────── */
+.confirm-sheet {
+  position: absolute;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(calc(100% - 24px), 420px);
+  pointer-events: auto;
+  background: var(--ui);
+  color: var(--ui-text);
+  border-radius: 24px;
+  padding: 18px 16px 16px;
+  box-shadow: 0 14px 36px rgba(5, 7, 26, 0.55);
+  text-align: center;
+  animation: sheet-up 0.4s var(--spring) both;
+}
+.confirm-text {
+  font-size: 1.05rem;
+  font-weight: 800;
+  margin-bottom: 14px;
+}
+.confirm-buttons {
+  display: flex;
+  gap: 10px;
+}
+.btn-cancel {
+  flex: 1;
+  background: rgba(58, 55, 48, 0.1);
+  color: var(--ui-text);
+  font-size: 1rem;
+  padding: 0.9em 0;
+}
+.btn-stab {
+  flex: 1.6;
+  background: var(--danger);
+  color: #fff;
+  font-size: 1.2rem;
+  padding: 0.75em 0;
+  box-shadow: 0 5px 0 rgba(170, 45, 45, 0.85);
+  /* transformは:activeの押し込みに譲り、filterでドキドキさせる */
+  animation: stab-pulse 1.3s ease-in-out 0.5s infinite;
+}
+.btn-stab:active:not(:disabled) {
+  box-shadow: 0 2px 0 rgba(170, 45, 45, 0.85);
+}
+
+/* ── 中央ステージ(スタンプ・バナー共通の置き場) ───────── */
+.center-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+/* セーフ！スタンプ。
+   枠+半透明の箱+ネオンの光は「配信オーバーレイの字幕」の文法なので使わない。
+   下の .banner-big と同じ「箱なし・太い暗色フチ」に揃えて、3Dの中に置かれた
+   ステッカーとして立たせる。
+
+   塗りを緑(--safe)からクリームへ。理由は2つ:
+   ・緑はこのゲームのどこにも無い色だった(パレットは紺/月/クリーム/金/珊瑚)
+   ・緑 #7ce38b はレンダー後の月面と 1.72:1 しかなく、塗りが実質消えていた。
+     読ませているのが暗フチだけになるので、月の暗い部分ではフチごと溶ける。
+   いちばん明るいクリームなら、明るい月面は暗フチ(7.3:1)が、暗い宇宙は
+   塗り(19.7:1)が受け持つので、どこに重なっても片方が必ず立つ。
+   ネオン(緑の text-shadow)は削除。厚みは硬いベタ影で出す。 */
+.stamp {
+  font-size: clamp(3rem, 16vw, 5rem);
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--ui);
+  letter-spacing: 0;
+  -webkit-text-stroke: 10px var(--space-deep);
+  paint-order: stroke fill;
+  text-shadow: 0 5px 0 rgba(5, 7, 26, 0.5);
+  transform: rotate(-8deg);
+  animation: stamp-in 0.45s var(--spring) both;
+}
+/* 全角「！」は左に半角ぶんの余白を持っていて「セーフ  ！」に見えるので詰める */
+.stamp-bang {
+  margin-left: -0.26em;
+}
+
+/* 発射バナー */
+.launch-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  transform: translateY(-16vh);
+  text-align: center;
+  padding: 0 16px;
+}
+.banner-big {
+  font-size: clamp(1.7rem, 8.5vw, 3rem);
+  font-weight: 800;
+  line-height: 1.3;
+  color: var(--ui);
+  -webkit-text-stroke: 7px var(--space-deep);
+  paint-order: stroke fill;
+  animation: pop-in 0.5s var(--spring) 0.35s both;
+}
+.banner-hit {
+  color: var(--accent);
+  text-shadow: 0 0 26px rgba(255, 217, 61, 0.55);
+}
+.banner-sub {
+  font-size: clamp(1rem, 5vw, 1.5rem);
+  font-weight: 800;
+  color: var(--ui);
+  -webkit-text-stroke: 6px var(--space-deep);
+  paint-order: stroke fill;
+  animation:
+    pop-in 0.5s var(--spring) 1.1s both,
+    float-y 2.4s ease-in-out 1.6s infinite;
+}
+
+/* トロフィー授与バナー(3Dのトロフィーが中央にせり上がるので上に置く) */
+.trophy-banner {
+  position: absolute;
+  top: calc(12vh + env(safe-area-inset-top));
+  left: 0;
+  right: 0;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  padding: 0 20px;
+  pointer-events: none;
+}
+.trophy-gen {
+  background: rgba(255, 217, 61, 0.15);
+  border: 1.5px solid var(--accent);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
+  padding: 6px 16px;
+  border-radius: 999px;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: pop-in 0.45s var(--spring) 0.5s both;
+}
+.trophy-name {
+  font-size: clamp(2rem, 10vw, 3.2rem);
+  font-weight: 800;
+  color: var(--accent);
+  -webkit-text-stroke: 7px var(--space-deep);
+  paint-order: stroke fill;
+  text-shadow: 0 0 24px rgba(255, 217, 61, 0.55);
+  overflow-wrap: anywhere;
+  animation: pop-in 0.55s var(--spring) 1s both;
+}
+.btn-share {
+  background: #0f1419;
+  color: #fff;
+  font-size: 0.95rem;
+  padding: 0.7em 1.6em;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  text-decoration: none;
+  animation: fade-up 0.5s ease 1.8s backwards;
+}
+
+/* 新ラウンド降臨バナー */
+.newround-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  transform: translateY(-10vh);
+  text-align: center;
+  padding: 0 16px;
+  animation: pop-in 0.55s var(--spring) 0.4s both;
+}
+.newround-gen {
+  font-size: clamp(1.5rem, 7.5vw, 2.6rem);
+  font-weight: 800;
+  color: var(--kosukuma);
+  -webkit-text-stroke: 7px var(--space-deep);
+  paint-order: stroke fill;
+}
+.newround-sub {
+  font-size: clamp(2rem, 10vw, 3.4rem);
+  font-weight: 800;
+  color: var(--accent-pink);
+  -webkit-text-stroke: 8px var(--space-deep);
+  paint-order: stroke fill;
+  animation: float-y 2s ease-in-out 1s infinite;
+}
+
+/* 通信よわい表示 */
+.conn-warn {
+  position: absolute;
+  left: calc(12px + env(safe-area-inset-left));
+  bottom: calc(6px + env(safe-area-inset-bottom));
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(255, 254, 242, 0.55);
+}
+
+/* 当たりの瞬間の白フラッシュ(0.15秒で消える) */
+.win-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  background: #fff;
+  pointer-events: none;
+  animation: flash-out 0.15s ease-out both;
+}
+
+/* ── モーダル共通 ────────────────────────────────────── */
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(5, 7, 26, 0.62);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  animation: fade-in 0.25s ease both;
+}
+.modal-card {
+  width: min(100%, 340px);
+  background: var(--ui);
+  color: var(--ui-text);
+  border-radius: 26px;
+  padding: 26px 22px 22px;
+  text-align: center;
+  box-shadow: 0 18px 48px rgba(5, 7, 26, 0.6);
+  animation: pop-in 0.4s var(--spring) both;
+}
+.modal-emoji {
+  font-size: 44px;
+  line-height: 1;
+  animation: float-y 2.2s ease-in-out infinite;
+}
+.modal-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1.5;
+  margin: 10px 0 16px;
+}
+.modal-note {
+  margin-top: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(58, 55, 48, 0.6);
+}
+
+/* 名前入力 */
+.name-input {
+  width: 100%;
+  font-family: var(--font-game);
+  font-size: 1.25rem;
+  font-weight: 800;
+  text-align: center;
+  color: var(--ui-text);
+  background: #fff;
+  border: 3px solid rgba(58, 55, 48, 0.18);
+  border-radius: 16px;
+  padding: 12px 14px;
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+  transition: border-color 0.2s ease;
+}
+.name-input::placeholder {
+  color: rgba(58, 55, 48, 0.35);
+}
+.name-input:focus {
+  border-color: var(--accent);
+}
+.name-input:disabled {
+  opacity: 0.6;
+}
+.btn-engrave {
+  width: 100%;
+  margin-top: 14px;
+  font-size: 1.2rem;
+  padding: 0.8em 0;
+}
+
+/* あそびかた */
+.help-steps {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 4px 0 16px;
+  text-align: left;
+}
+.help-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.55;
+}
+.help-num {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--ui-text);
+  font-size: 0.85rem;
+  font-weight: 800;
+  margin-top: 1px;
+}
+/* 剣そだての説明。手順(番号つき)とは別の「知っておくと楽しい」情報なので、
+   薄い成型トレイ風の地に載せて、番号リストと視覚的に切り分ける */
+.help-gear {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  text-align: left;
+  border-radius: 14px;
+  background: rgba(58, 55, 48, 0.06);
+}
+.help-gear-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.5;
+  opacity: 0.86;
+}
+.help-gear-icon {
+  flex: none;
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+.help-cooldown {
+  background: rgba(255, 107, 107, 0.12);
+  color: var(--danger);
+  font-size: 0.85rem;
+  font-weight: 800;
+  border-radius: 12px;
+  padding: 8px 10px;
+  margin-bottom: 16px;
+}
+.help-card .btn-primary {
+  width: 100%;
+}
+
+/* ── トースト ────────────────────────────────────────── */
+.toast-wrap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(104px + env(safe-area-inset-bottom));
+  z-index: 40;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  padding: 0 16px;
+}
+.toast {
+  background: rgba(5, 7, 26, 0.82);
+  border: 1px solid rgba(255, 254, 242, 0.2);
+  color: var(--ui);
+  font-size: 13px;
+  font-weight: 800;
+  padding: 10px 20px;
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(5, 7, 26, 0.5);
+  animation: toast-in 0.45s var(--spring) both;
+}
+
+/* ── キーフレーム ────────────────────────────────────── */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+/* バネで飛び出す */
+@keyframes pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+/* ロゴ文字: 上から降ってきて潰れて戻る(squash & stretch) */
+@keyframes logo-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(-0.8em) scale(0.3);
+  }
+  60% {
+    opacity: 1;
+    transform: translateY(0.08em) scale(1.15, 0.85);
+  }
+  80% {
+    transform: translateY(-0.03em) scale(0.95, 1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+/* ロゴ文字: ときどきぴょこんと跳ねる */
+@keyframes char-bounce {
+  0%,
+  55%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  15% {
+    transform: translateY(-0.16em) scale(0.96, 1.06);
+  }
+  32% {
+    transform: translateY(0) scale(1.06, 0.94);
+  }
+  42% {
+    transform: translateY(-0.04em) scale(1, 1.02);
+  }
+}
+/* ふわふわ上下 */
+@keyframes float-y {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-0.14em);
+  }
+}
+/* スタンプがドンと押される */
+@keyframes stamp-in {
+  0% {
+    opacity: 0;
+    transform: rotate(-8deg) scale(2.8);
+  }
+  55% {
+    opacity: 1;
+    transform: rotate(-8deg) scale(0.92);
+  }
+  75% {
+    transform: rotate(-8deg) scale(1.06);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(-8deg) scale(1);
+  }
+}
+/* 下からシートがせり上がる */
+@keyframes sheet-up {
+  from {
+    transform: translate(-50%, 130%);
+  }
+  to {
+    transform: translate(-50%, 0);
+  }
+}
+/* 刺すボタンのドキドキ */
+@keyframes stab-pulse {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.14);
+  }
+}
+/* はじめるボタンの呼吸 */
+@keyframes btn-breathe {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.08);
+  }
+}
+/* フィード行が左から跳ねて入る */
+@keyframes feed-in {
+  from {
+    opacity: 0;
+    transform: translateX(-14px) scale(0.9);
+  }
+  to {
+    transform: translateX(0) scale(1);
+  }
+}
+/* トーストが下から跳ねて出る */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(60px) scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+/* 白フラッシュが消える */
+@keyframes flash-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* ── アクセシビリティ: 動きを減らす設定を尊重 ─────────── */
+@media (prefers-reduced-motion: reduce) {
+  .title-screen *,
+  .hud *,
+  .modal-backdrop,
+  .modal-card,
+  .toast {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============================================================
+   剣ラック / しあげ / チャーム  (接頭辞 kk-)
+   ねらいは「実物の黒ひげ危機一発のパッケージと並べても同じおもちゃに見える」。
+   ・面には必ず厚みを持たせる(内側の白ハイライト + 下に濃い色のベタ影)
+   ・押すと沈む(translateY + 影を薄く)
+   ・動きは transform/opacity だけ。レイアウトは揺らさない
+   ============================================================ */
+
+:root {
+  /* ラックの成型樹脂(すこし温かみのあるグレー。クリーム色のシートから浮く) */
+  --kk-tray-top: #e5dec8;
+  --kk-tray-face: #c5bca1;
+  --kk-tray-deep: #9a9179;
+  --kk-panel: linear-gradient(180deg, #f8f4e4, #e8e2cc);
+  --kk-panel-edge: rgba(58, 55, 48, 0.1);
+  --kk-panel-drop: rgba(58, 55, 48, 0.18);
+  /* アクセントは「樽の赤 = コーラル」1本に絞る。
+     以前はコーラル(見出し)/ブルー(しあげ・したく)/イエロー(選択)/濃紺(棚)の
+     4色が同じパネルの中で競っていて、どれが「いま選んでいる」なのか読めなかった。
+     色が意味するのは「いま選んでいる・つぎに手に入る」だけにする。 */
+  --kk-red-top: #ff8272;
+  --kk-red-face: #e8503f;
+  --kk-red-deep: #b4382a;
+  /* 明るいコーラルは「白ヌキ文字で3.5:1・クリーム地の細線で2.8:1」しか出ない。
+     文字と細い枠には同じ色相の濃いほうを使う(クリーム地 5.3:1 / 白ヌキ 5.9:1) */
+  --kk-coral-ink: #bd2f1b;
+  /* 札・ピル・座金に使う面。白ヌキ文字で 4.6:1 */
+  --kk-coral-pill: linear-gradient(180deg, #e2553f, #c22f1e);
+  /* 剣を立てる「くぼんだ陳列スロット」。ぎん #e8eefc・きん #ffd06a は
+     クリーム地だと 1.4:1 前後しか出ず実質見えないので、金属も透明もここに
+     置いて必ず地色から分離させる(ぎん 8.7:1 / きん 7.0:1) */
+  --kk-well-top: #3b3529;
+  --kk-well-bot: #554d3d;
+}
+
+/* SwordArt の svg は箱の幅にあわせて伸びる(高さは viewBox 比で決まる) */
+.kk-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* ── 剣ラック(たるの横に並んだ、あの剣たち) ──────────── */
+.kk-rack {
+  position: relative;
+  /* 剣が実物比率で太くなったぶん、同じ見え幅なら背は低くなる(縦を節約できる) */
+  height: 100px;
+  /* シートの外へすこし張り出して、剣1本ぶんの幅(≒42px)をかせぐ */
+  margin: 0 -8px 14px;
+}
+/* ラックの土台。上面(明るい)と前面(暗い)の2段で厚みを出す */
+.kk-rack-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 27px;
+  border-radius: 11px;
+  background: linear-gradient(
+    180deg,
+    var(--kk-tray-top) 0 36%,
+    var(--kk-tray-face) 36% 100%
+  );
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.75),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.08),
+    0 3px 0 var(--kk-tray-deep),
+    0 7px 12px rgba(5, 7, 26, 0.22);
+}
+.kk-rack-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+}
+/* 剣1本ぶんのスロット。細くても縦に長いので指では外さない */
+.kk-slot {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+/* 土台に空いた穴(剣が挿さっているように見せる) */
+.kk-slot-hole {
+  position: absolute;
+  left: 50%;
+  bottom: 15px;
+  width: 17px;
+  height: 7px;
+  margin-left: -8.5px;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at 50% 28%,
+    rgba(0, 0, 0, 0.6),
+    rgba(0, 0, 0, 0.32)
+  );
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+.kk-slot-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: 13px;
+  width: 26px;
+  height: 9px;
+  margin-left: -13px;
+  border-radius: 50%;
+  background: rgba(60, 50, 20, 0.3);
+  filter: blur(3px);
+  transition:
+    transform 0.22s var(--spring),
+    opacity 0.22s ease;
+}
+.kk-slot-sword {
+  position: absolute;
+  left: 50%;
+  /* 剣先は前板(17px)のうしろに隠れたまま、刃がなるべく多く見える高さ */
+  bottom: 9px;
+  display: block;
+  width: 35px;
+  max-width: 100%;
+  margin-left: -17.5px;
+  transform-origin: 50% 100%;
+  transition:
+    transform 0.22s var(--spring),
+    filter 0.2s ease;
+}
+/* えらんだ1本の目印は「スロットの色が変わる」。
+   前は剣のうしろに 54×92px の金のあかりを敷いていて、そのハローのせいで
+   選択中の剣だけ1.4倍に大きくなって棚から浮き出て見えていた(事故に見える)。
+   剣の大きさは8本ぜんぶ同じに保ち、色つきの座金・持ち上げ・穴のふちで示す。 */
+.kk-slot.sel::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  /* 台の見えている上面(前板17px〜土台27px)をこのスロットだけ塗りつぶす */
+  bottom: 12px;
+  width: 36px;
+  max-width: 100%;
+  height: 15px;
+  margin-left: -18px;
+  border-radius: 8px;
+  background: var(--kk-coral-pill);
+  /* あかの剣をえらんだときに座金と剣が同じ色で溶けないよう、
+     クリームの細いふちを必ず1本入れる(コーラル地に対して 4.6:1) */
+  box-shadow:
+    inset 0 0 0 1.6px rgba(255, 254, 242, 0.92),
+    inset 0 3px 0 rgba(255, 255, 255, 0.28),
+    0 1px 0 #96220f;
+}
+.kk-slot.sel .kk-slot-hole {
+  box-shadow:
+    0 0 0 1.5px rgba(255, 254, 242, 0.85),
+    0 1px 0 rgba(255, 254, 242, 0.5);
+}
+/* えらんだ1本は、ラックからスッと持ち上がって前に出る。
+   落ち影は「黒い染み」にならないところまで薄く・小さくする */
+.kk-slot.sel .kk-slot-sword {
+  transform: translateY(-7px);
+  filter: drop-shadow(0 2px 2px rgba(5, 7, 26, 0.28));
+  animation: kk-sword-bob 2.8s ease-in-out 0.35s infinite;
+}
+.kk-slot.sel .kk-slot-shadow {
+  transform: scale(0.55);
+  opacity: 0.28;
+}
+.kk-slot:active .kk-slot-sword {
+  transform: translateY(3px) scale(0.96);
+}
+.kk-slot.sel:active .kk-slot-sword {
+  animation: none;
+  transform: translateY(-3px) scale(0.97);
+}
+@media (hover: hover) {
+  .kk-slot:hover .kk-slot-sword {
+    transform: translateY(-6px);
+  }
+}
+/* ラックの前板。剣先を隠すので「挿さっている」と読める */
+.kk-rack-lip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  height: 17px;
+  border-radius: 0 0 11px 11px;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 calc(100% / 8 - 1px),
+      rgba(60, 50, 20, 0.14) calc(100% / 8 - 1px) calc(100% / 8)
+    ),
+    linear-gradient(180deg, var(--kk-tray-face), var(--kk-tray-deep));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 3px 0 var(--kk-tray-deep);
+  pointer-events: none;
+}
+
+/* ── いま持っている剣(確認シートの装備バー) ───────────── */
+.kk-equip {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 46px;
+  margin-bottom: 10px;
+  padding: 7px 8px 7px 8px;
+  border: 0;
+  border-radius: 15px;
+  background: var(--kk-panel);
+  box-shadow:
+    inset 0 0 0 2px var(--kk-panel-edge),
+    inset 0 2px 0 rgba(255, 255, 255, 0.8),
+    0 2px 0 var(--kk-panel-drop);
+  font-family: var(--font-game);
+  color: var(--ui-text);
+  text-align: left;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 0.14s var(--spring),
+    box-shadow 0.14s ease;
+}
+.kk-equip:active {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 0 0 2px var(--kk-panel-edge),
+    inset 0 2px 0 rgba(255, 255, 255, 0.8);
+}
+/* いま持っている剣の実物ミニチュア(絵文字は使わない) */
+.kk-equip-icon {
+  flex: none;
+  display: block;
+  width: 17px;
+  filter: drop-shadow(0 1px 1px rgba(5, 7, 26, 0.28));
+}
+.kk-equip-txt {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.kk-equip-txt b {
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kk-equip-txt small {
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(58, 55, 48, 0.62);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kk-equip-go {
+  flex: none;
+  padding: 6px 10px;
+  border-radius: 999px;
+  /* 見出しと同じコーラル。ここだけ青だと「別の機能」に見えていた */
+  background: var(--kk-coral-pill);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.4),
+    0 2px 0 #96220f;
+  font-size: 11px;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(120, 30, 20, 0.5);
+}
+.kk-equip-go::after {
+  content: " ▸";
+}
+
+/* ── したくボタン(idle の右下) ───────────────────────── */
+.kk-fab {
+  position: absolute;
+  right: calc(12px + env(safe-area-inset-right));
+  bottom: calc(26px + env(safe-area-inset-bottom));
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 58px;
+  padding: 8px 0 7px;
+  border: 0;
+  border-radius: 19px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 242, 0.97),
+    rgba(232, 226, 202, 0.97)
+  );
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.9),
+    0 4px 0 rgba(88, 82, 62, 0.55),
+    0 10px 20px rgba(5, 7, 26, 0.45);
+  font-family: var(--font-game);
+  color: var(--ui-text);
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  animation: pop-in 0.35s var(--spring) both;
+  transition:
+    transform 0.14s var(--spring),
+    box-shadow 0.14s ease;
+}
+.kk-fab:active {
+  transform: translateY(4px);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 rgba(88, 82, 62, 0.55),
+    0 4px 10px rgba(5, 7, 26, 0.45);
+}
+.kk-fab-sword {
+  display: block;
+  width: 19px;
+}
+.kk-fab-label {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: rgba(58, 55, 48, 0.72);
+}
+.kk-fab-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 21px;
+  height: 21px;
+  padding: 0 5px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--ui-text);
+  font-size: 11px;
+  font-weight: 800;
+  box-shadow: 0 2px 0 rgba(120, 90, 0, 0.45);
+}
+
+/* ── したく引き出し ──────────────────────────────────── */
+.kk-drawer-back {
+  position: absolute;
+  inset: 0;
+  z-index: 24;
+  pointer-events: auto;
+  background: rgba(5, 7, 26, 0.55);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  animation: fade-in 0.2s ease both;
+}
+.kk-drawer {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 440px);
+  /* 高さの決めかた:
+     ・vh はモバイルのアドレスバーぶんを含むので、実機だと下が切れる。
+       svh(いちばん縮んだときの高さ)を使い、対応していない環境には vh を残す。
+     ・下端の余白は .kk-drawer 側ではなくスクロール領域(.kk-drawer-body)側に
+       持たせる。ここに置くと、スクロールしたとき最後の1行が
+       クリップのふちに貼りついて「切れている」ように見えてしまう。
+     計算(440px幅/375px幅とも): 523px → 616.5px。
+       足したぶん  プレビュー 144.5(上余白8 + カード136.5)
+       詰めたぶん  −51(見出し5・本文の上下12・ラック10・札4・しあげ11・
+                   チャーム12 / 段間は 9×2 → 7×3 で +3)
+     実測(WebKit・M PLUS Rounded 1c・375px幅/440px幅とも同じ):
+       チャームのつけ外しUIを足す前  622.2px(13個) / 625.6px(12個)
+       足したあと                    626.5px(13個) / 630.7px(12個)
+       └ 内わけ: 見出しに「ぜんぶ つける」の28pxの段(+5)、枠に指のあたりの
+         下余白3px(+6)、そのぶんトレイの余白と段間を4px削って相殺(−4.5)
+     いちばん高い 630.7px でも上限645pxに 14px の余裕がある。
+     それより低い画面では下の @media(max-height:700px)でさらに 21px 詰めて
+     609.4px にし(667pxの端末でも上限620pxに収まる)、
+     それでも足りなければ本文がスクロールする(プレビューは sticky なので、
+     スクロールしても完成形は出たままになる)。 */
+  max-height: min(93vh, 645px);
+  max-height: min(93svh, 645px);
+  border-radius: 26px 26px 0 0;
+  overflow: hidden;
+  background: var(--ui);
+  color: var(--ui-text);
+  box-shadow: 0 -12px 40px rgba(5, 7, 26, 0.6);
+  pointer-events: auto;
+  transform: translateX(-50%);
+  animation: kk-drawer-up 0.38s var(--spring) both;
+}
+/* 見出しは「赤い樽」の帯。ここに色を置くだけでパネル全体の印象が変わる */
+.kk-drawer-head {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* ✕は絶対配置にして、44pxのタップ領域が見出しの高さを押し広げないようにする
+     (これだけで帯が22px縮む = 進捗バーが切れなくなる)。
+     プレビューを足したぶん、上下を3+2px削って帯を43pxにしてある */
+  padding: 11px 58px 7px 16px;
+  border-radius: 26px 26px 0 0;
+  background: linear-gradient(180deg, var(--kk-red-top), var(--kk-red-face));
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.4),
+    0 3px 0 var(--kk-red-deep);
+}
+.kk-drawer-grip {
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  width: 42px;
+  height: 5px;
+  margin-left: -21px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+}
+.kk-drawer-title {
+  font-size: 1.02rem;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 1.5px 0 rgba(140, 40, 26, 0.65);
+}
+.kk-drawer-x {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  margin-top: -22px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.24);
+  color: #fff;
+  font-family: var(--font-game);
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.14s var(--spring);
+}
+.kk-drawer-x:active {
+  transform: scale(0.88);
+}
+.kk-drawer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  /* 下の余白はここ(スクロールする側)に置く。こうしておけば、画面が低くて
+     スクロールになったときも最後の進捗バーがふちに貼りつかない。
+     上の余白は sticky なプレビュー側が持つ(ここに置くと、スクロールした
+     中身がプレビューの上のすき間に見えてしまう) */
+  padding: 0 14px calc(12px + env(safe-area-inset-bottom));
+  min-height: 0; /* flex列の中でスクロールさせるため */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── いまの1本のプレビュー(引き出しのいちばん上) ────────────
+   選んだ いろ × しあげ × チャーム を全部のせた「完成形」。
+   ここが無いと、選ぶ道具だけあって結果が見えない画面になる。
+
+   剣の縦横比は 44:102 とかなり縦長なので、そのまま大きく出すと引き出しの
+   高さを食いつぶす。刃の下を切って(SwordArt の cropY)台に挿さっている姿に
+   すると、同じ高さでも剣を1.3倍ほど大きく描ける。
+   横のあいた場所には、ついているチャームを潰れない大きさで並べる
+   (剣にぶら下がる粒は9px前後にしかならないので、細部はこちらが引き受ける)。 */
+.kk-preview-sec {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  /* 本文の上余白はここが持つ。sticky が貼りつく位置に隙間を作らないため。
+     左右は本文のパディングぶん外へ広げる。剣ラックは -8px はみ出しているので、
+     ここを本文幅どまりにすると、スクロール中に剣の先が横からのぞいてしまう */
+  margin: 0 -14px;
+  padding: 8px 14px 0;
+  /* 下の棚がすき間から透けないよう、地色でふさぐ */
+  background: var(--ui);
+  /* スクロールしていることが分かる、ごく薄い落ち影 */
+  box-shadow: 0 7px 8px -8px rgba(58, 55, 48, 0.55);
+}
+.kk-preview {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  padding: 7px 9px;
+  border-radius: 18px;
+  background: var(--kk-panel);
+  box-shadow:
+    inset 0 0 0 2px var(--kk-panel-edge),
+    inset 0 2px 0 rgba(255, 255, 255, 0.8),
+    0 2px 0 var(--kk-panel-drop);
+}
+/* 剣を立てる暗い樹脂のくぼみ。しあげの陳列スロットと同じ地にして、
+   ぎん/きん/クリスタルがクリーム地で消えるのをここでも防ぐ */
+.kk-preview-stage {
+  position: relative;
+  flex: none;
+  /* 剣そのものは 70px。左右の 4px は「揺れしろ」で、ここが無いと
+     いちばん張り出す鍔の端が台のふちに当たって切れる */
+  width: 78px;
+  border-radius: 13px;
+  overflow: hidden;
+  background: linear-gradient(180deg, var(--kk-well-top), var(--kk-well-bot));
+  box-shadow:
+    inset 0 3px 6px rgba(0, 0, 0, 0.5),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.16),
+    0 1px 0 rgba(255, 255, 255, 0.55);
+}
+/* 台のうしろのあかりは、いま選んでいる色。色を変えた手ごたえを台にも出す */
+.kk-preview-glow {
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  width: 108px;
+  height: 108px;
+  margin: -54px 0 0 -54px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--kk-glow), transparent 66%);
+  opacity: 0.32;
+}
+/* 柄頭を支点にして、ゆっくり左右に揺れる(ぶら下がっている物の気配)。
+   振り幅は 1.5° まで。これ以上ふると鍔の端が台のふちに当たって切れる */
+.kk-preview-sword {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0 4px; /* 揺れしろ。剣の実寸は 70px(台78 − 4×2) */
+  filter: drop-shadow(0 3px 4px rgba(5, 7, 26, 0.5));
+  transform-origin: 50% 6%;
+  animation: kk-preview-sway 5.4s ease-in-out infinite;
+}
+/* 台の板。切った刃の断面をここで隠して「挿さっている」に見せる */
+.kk-preview-base {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 11px;
+  background: linear-gradient(
+    180deg,
+    var(--kk-tray-top) 0 42%,
+    var(--kk-tray-face) 42% 100%
+  );
+  box-shadow: 0 -3px 7px rgba(0, 0, 0, 0.5);
+}
+.kk-preview-txt {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+.kk-preview-cap {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: rgba(58, 55, 48, 0.5);
+}
+/* HUDから引っ越してきた「きみの記録」の数字だけ、読める大きさに起こす */
+.kk-preview-cap b {
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(58, 55, 48, 0.8);
+  margin: 0 1px;
+}
+.kk-preview-name {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+/* ついているチャームは「潰れない大きさ」で全部ならべる。
+   1行7個の固定グリッドにしてあるので、13個でもきっちり2行で収まる */
+.kk-preview-charms {
+  list-style: none;
+  display: grid;
+  /* 幅320pxの端末でも1行7個が入るよう、枠は縮められるようにしておく */
+  grid-template-columns: repeat(7, minmax(20px, 24px));
+  gap: 3px;
+  margin-top: 2px;
+  justify-content: start;
+}
+.kk-preview-charms li {
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(58, 55, 48, 0.08);
+}
+/* 隠しチャームだけ受け皿をひと段深く。色は足さない(アクセントはコーラル1本) */
+.kk-preview-charms li.secret {
+  background: rgba(58, 55, 48, 0.17);
+  box-shadow: inset 0 0 0 1.6px rgba(58, 55, 48, 0.42);
+}
+.kk-preview-sub {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: rgba(58, 55, 48, 0.62);
+}
+.kk-preview-sub b {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ui-text);
+}
+
+/* 引き出しの中のラックは一段小さく。確認シートより縦の余裕がない */
+.kk-drawer .kk-rack {
+  height: 76px;
+  margin-bottom: 4px;
+}
+.kk-drawer .kk-slot-sword {
+  width: 29px;
+  margin-left: -14.5px;
+}
+/* 棚の見出し。以前は「いろ=黄 / しあげ=青 / チャーム=赤」と色分けしていたが、
+   ラベルの色は棚の中身と何の関係もないのに、選択色や解放バッジと同じ強さで
+   competing していた。3つとも同じコーラルの札にして、区別は文字にまかせる。
+   (kk-label-* は残してあるが色は付けない。DOM側の意味づけとしてのみ使う) */
+.kk-sec-label {
+  display: inline-block;
+  margin-bottom: 3px;
+  padding: 3px 9px 4px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  background: var(--kk-coral-pill);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32);
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(110, 25, 15, 0.5);
+}
+
+/* ── しあげ(スキン)の陳列棚 ─────────────────────────── */
+.kk-skins {
+  display: flex;
+  gap: 6px;
+}
+.kk-skin {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 3px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--kk-panel);
+  box-shadow:
+    inset 0 0 0 2px var(--kk-panel-edge),
+    inset 0 2px 0 rgba(255, 255, 255, 0.8),
+    0 2px 0 var(--kk-panel-drop);
+  font-family: var(--font-game);
+  color: var(--ui-text);
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 0.16s var(--spring),
+    box-shadow 0.16s ease,
+    background 0.16s ease;
+}
+.kk-skin:active {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 0 0 2px var(--kk-panel-edge),
+    inset 0 2px 0 rgba(255, 255, 255, 0.8);
+}
+/* 剣を立てる「くぼんだ陳列スロット」。
+   クリーム地に直接置くと ぎん(#e8eefc)は 1.42:1、きん(#ffd06a)は 1.47:1 しか
+   出ず、図形の下限 3:1 を大きく割って実質見えなかった。暗い樹脂のくぼみに
+   入れて、金属も透明もここで必ず地色から分離させる。 */
+.kk-skin-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  max-width: 100%;
+  height: 44px;
+  border-radius: 9px;
+  background: linear-gradient(180deg, var(--kk-well-top), var(--kk-well-bot));
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.45),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.16),
+    0 1px 0 rgba(255, 255, 255, 0.55);
+}
+.kk-skin-sword {
+  display: block;
+  width: 18px;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+}
+.kk-skin-name {
+  min-height: 12px;
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.kk-skin-sub {
+  min-height: 11px;
+  font-size: 8.5px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  color: rgba(58, 55, 48, 0.55);
+}
+/* えらんでいるものはコーラルのふちで持ち上がる。
+   金のふち + 金の地だと、金のカード(きん)と選択状態が同じ色になってしまう */
+.kk-skin.sel {
+  background: linear-gradient(180deg, #fff4ef, #ffe0d8);
+  box-shadow:
+    inset 0 0 0 2.5px var(--kk-coral-ink),
+    inset 0 2px 0 rgba(255, 255, 255, 0.85),
+    0 3px 0 rgba(150, 50, 35, 0.3);
+  transform: translateY(-2px);
+}
+.kk-skin.sel .kk-skin-sub {
+  color: var(--kk-coral-ink);
+}
+/* 未解放。剣そのものは1ミリも暗くしない。
+   前は濃紺のカードに brightness(.86)/opacity(.72) を重ねていたので、
+   クリスタルがオリーブ色・にじいろが薄い灰青になり「欲しくならない見本」に
+   なっていた。カードの地をひと段沈めるだけにして、中身は商品として見せる。 */
+.kk-skin.lock {
+  background: linear-gradient(180deg, #f1ead4, #ded5b8);
+}
+.kk-skin.lock .kk-skin-sub {
+  color: var(--kk-coral-ink);
+}
+/* 鍵は15pxのバッジにしてカードの右上へ。剣の上に重ねない */
+.kk-skin-lock {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 1;
+  width: 15px;
+  height: 15px;
+  padding: 1.5px;
+  border-radius: 999px;
+  background: var(--kk-coral-ink);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+/* 説明文の中に置く小さな鍵 */
+.kk-hint-lock {
+  width: 11px;
+  height: 11px;
+  margin-right: 3px;
+  vertical-align: -1px;
+  color: rgba(58, 55, 48, 0.6);
+}
+.kk-skins-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+  padding: 4px 9px;
+  border-radius: 11px;
+  background: rgba(58, 55, 48, 0.07);
+}
+.kk-skins-hint {
+  flex: 1 1 auto;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  text-align: center;
+  color: rgba(58, 55, 48, 0.7);
+}
+.kk-skins-hint b {
+  font-weight: 800;
+  color: var(--ui-text);
+}
+/* とばした回数は勲章あつかい(金) */
+.kk-wins {
+  flex: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffe27a, #f6bf3d);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 2px 0 rgba(150, 115, 0, 0.4);
+  font-size: 10px;
+  font-weight: 800;
+  color: #5c4405;
+  white-space: nowrap;
+}
+.kk-wins b {
+  font-size: 13px;
+}
+
+/* ── チャーム ───────────────────────────────────────── */
+.kk-charm-svg {
+  display: block;
+  filter: drop-shadow(0 1.5px 1.5px rgba(5, 7, 26, 0.35));
+}
+.kk-disc {
+  display: block;
+  width: var(--kk-charm-d);
+  height: var(--kk-charm-d);
+}
+
+.kk-charms-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+}
+.kk-charms-head .kk-sec-label {
+  margin-bottom: 0;
+}
+.kk-charms-count {
+  min-width: 0;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: rgba(58, 55, 48, 0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kk-charms-count b {
+  font-size: 14px;
+  color: var(--ui-text);
+}
+/* 一括のショートカット。1つのボタンが「ぜんぶ つける」⇄「ぜんぶ はずす」と
+   入れかわる。2つ並べるとこの幅では札とけんかするし、いま何が起きるのかも
+   ボタンを読むだけで分かるようになる */
+.kk-charms-all {
+  position: relative;
+  flex: none;
+  margin-left: auto;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(58, 55, 48, 0.08);
+  box-shadow: inset 0 0 0 1.6px rgba(58, 55, 48, 0.22);
+  color: var(--ui-text);
+  font-family: var(--font-game);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.14s var(--spring);
+}
+/* 見た目は30pxだが、指のあたりは44px。上下は棚のあいだの余白へ逃がすので、
+   まわりの押せるものと取り合いにならない */
+.kk-charms-all::before {
+  content: "";
+  position: absolute;
+  inset: -8px -6px;
+}
+.kk-charms-all:active {
+  transform: scale(0.92);
+}
+/* 受け皿の並んだトレイ。
+   もとは実物の箱の「青い台」だったが、青は画面で4つめのアクセントになるうえ、
+   しずく/ほうせき/おさかな のような青いチャームが台に埋もれてしまう。
+   しあげの陳列スロットと同じ暗い樹脂にすると、色は1つ減り、12色ぜんぶが
+   等しく前に出る(「獲得=フルカラー / 未獲得=沈んだシルエット」の反転は維持)。 */
+.kk-charms-grid {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  margin-top: 3px;
+  padding: 5px 7px 4px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--kk-well-top), var(--kk-well-bot));
+  box-shadow:
+    inset 0 3px 5px rgba(0, 0, 0, 0.4),
+    inset 0 -2px 0 rgba(255, 255, 255, 0.16),
+    0 2px 0 rgba(40, 35, 26, 0.75);
+}
+.kk-charm-slot {
+  display: flex;
+  min-width: 0;
+}
+/* 枠の中身。持っているものは button(押すとつけ外し)、まだのものは span。
+   どちらも同じ見た目・同じ大きさにして、並びのリズムを崩さない */
+.kk-charm-btn {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  /* 下の3pxは指のあたりを44pxに届かせるためのもの。
+     受け皿26 + すきま2 + 札12.75 = 40.75 では足りない */
+  padding: 0 0 3px;
+  border: 0;
+  background: none;
+  font-family: var(--font-game);
+  color: inherit;
+}
+/* さらに枠のあいだ(4px)の半分ずつへ広げる。レイアウトを1pxも動かさずに
+   47px 角になる(となりと重ならないので誤爆もしない) */
+.kk-charm-btn::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+}
+button.kk-charm-btn {
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+button.kk-charm-btn:active .kk-charm-cell {
+  transform: scale(0.88);
+}
+/* 13個になったときだけ1行7枠にする。6枠のままだと3行目ができて、
+   棚が縦に伸びたぶん下の進捗バーが引き出しからはみ出してしまう */
+.kk-charms-grid.wide {
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px 3px;
+}
+.kk-charms-grid.wide .kk-charm-cell {
+  width: 24px;
+  height: 24px;
+}
+/* 7枠のときは列のすきまが3pxしかない。左右の広げすぎは となりと取り合いになる */
+.kk-charms-grid.wide .kk-charm-btn::before {
+  inset: -2px -1.5px;
+}
+/* 受け皿。明るさは「ついてる > はずした > 持っていない」の順にきれいに並べる。
+   逆にすると、がんばって集めたものがいちばん目立たない棚になってしまう */
+.kk-charm-cell {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  transition:
+    transform 0.14s var(--spring),
+    background 0.16s ease,
+    box-shadow 0.16s ease;
+}
+/* まだ持っていない: くぼみに沈んだ影だけが見える */
+.kk-charm-slot:not(.got) .kk-charm-cell {
+  background: radial-gradient(
+    circle at 50% 34%,
+    rgba(0, 0, 0, 0.45),
+    rgba(0, 0, 0, 0.22)
+  );
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.55),
+    0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.kk-charm-slot:not(.got) .kk-charm-svg {
+  filter: none;
+}
+/* 持っているけど外している: 同じくぼみだが、ひとつ明るくして色を残す。
+   ここを未獲得と同じ暗さにすると「持っている」ことが消えてしまうし、
+   8ボール(ほぼ黒)がトレイに溶けて見えなくなる */
+.kk-charm-slot.off .kk-charm-cell {
+  background: radial-gradient(
+    circle at 50% 32%,
+    rgba(255, 255, 255, 0.17),
+    rgba(255, 255, 255, 0.04)
+  );
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.42),
+    0 1px 0 rgba(255, 255, 255, 0.16);
+}
+.kk-charm-slot.off .kk-charm-svg {
+  opacity: 0.52;
+  filter: saturate(0.5) drop-shadow(0 1px 1px rgba(5, 7, 26, 0.35));
+}
+/* ついている: 受け皿が明るく灯って、コーラルのふちが付く。
+   コーラル = 「いま選んでいる」の意味は色・しあげの棚と共通 */
+.kk-charm-slot.on .kk-charm-cell {
+  background: radial-gradient(circle at 50% 30%, #fffdf4, #ffe7dd);
+  box-shadow:
+    0 0 0 2px #ff8272,
+    0 2px 0 rgba(150, 60, 48, 0.45),
+    0 0 10px rgba(255, 130, 114, 0.5);
+}
+.kk-charm-need {
+  font-size: 8.5px;
+  line-height: 1.5;
+  font-weight: 800;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.72);
+}
+.kk-charm-slot.on .kk-charm-need {
+  color: #ffb0a2;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+.kk-charm-slot.off .kk-charm-need {
+  color: rgba(255, 255, 255, 0.45);
+}
+/* つぎに手に入るものは白いふちで期待させる。
+   コーラルは「ついてる」に譲った(同じ画面で2つの意味を持たせない) */
+.kk-charm-slot.next .kk-charm-cell {
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.5),
+    0 0 0 2px rgba(255, 255, 255, 0.62),
+    0 0 9px rgba(255, 255, 255, 0.3);
+}
+.kk-charm-slot.next .kk-charm-need {
+  color: #fff;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
+}
+/* 隠しチャーム。手に入れるまでは DOM ごと存在しない(「?」の空き枠すら
+   置かない — 枠があるだけで「あと1個ある」と分かってしまう)。
+   手に入れた瞬間に13個目としてぬっと現れ、そのとき1回だけ跳ねる。
+   つけ外しはできるので、コーラルのふちの外側に白い光をもう一重まとわせて
+   「1個だけ違うものが混ざっている」を残す(色は足さない) */
+.kk-charm-slot.secret .kk-charm-cell {
+  animation: kk-secret-in 0.75s var(--spring) 0.15s both;
+}
+.kk-charm-slot.secret.off .kk-charm-cell {
+  background: radial-gradient(
+    circle at 50% 30%,
+    rgba(255, 255, 255, 0.3),
+    rgba(255, 255, 255, 0.07)
+  );
+  box-shadow:
+    0 0 0 1.6px rgba(255, 255, 255, 0.82),
+    0 0 12px rgba(255, 255, 255, 0.45);
+}
+.kk-charm-slot.secret.on .kk-charm-cell {
+  box-shadow:
+    0 0 0 2px #ff8272,
+    0 0 0 3.6px rgba(255, 255, 255, 0.78),
+    0 0 12px rgba(255, 255, 255, 0.4);
+}
+.kk-charm-slot.secret .kk-charm-need {
+  letter-spacing: 0.04em;
+}
+.kk-charms-next {
+  margin-top: 4px;
+}
+.kk-charms-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: rgba(58, 55, 48, 0.8);
+}
+.kk-charms-line-ico {
+  flex: none;
+}
+.kk-charms-line b {
+  font-weight: 800;
+  color: var(--ui-text);
+}
+.kk-charms-line em {
+  font-style: normal;
+  font-weight: 800;
+  color: var(--kk-coral-ink);
+}
+.kk-charms-done {
+  color: var(--kk-coral-ink);
+  font-weight: 800;
+}
+.kk-charms-bar {
+  height: 8px;
+  margin-top: 3px;
+  border-radius: 999px;
+  background: rgba(58, 55, 48, 0.14);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+.kk-charms-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  /* 「あと何本」を示すバーは、つぎに手に入るチャームのふちと同じコーラル */
+  background: linear-gradient(180deg, #ff9382, var(--kk-red-face));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  transition: width 0.45s ease;
+}
+
+/* ── チャーム ゲット！(獲得の瞬間) ────────────────────── */
+.kk-charmget {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  z-index: 45;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  text-align: center;
+}
+.kk-charmget-in {
+  display: grid;
+  justify-items: center;
+  animation:
+    kk-charmget-in 0.5s var(--spring) both,
+    kk-charmget-out 0.55s ease 2.35s forwards;
+}
+/* 光・波紋・チャームを同じマスに重ねる(DOMを増やさない) */
+.kk-charmget-rays,
+.kk-charmget-ring,
+.kk-charmget-disc {
+  grid-area: 1 / 1;
+  align-self: center;
+  justify-self: center;
+}
+.kk-charmget-rays {
+  width: 170px;
+  height: 170px;
+  /* 負のマージンで「場所は取らないが大きく光る」。
+     セーフ！スタンプと重ならないよう、ブロックの高さを低く保つため */
+  margin: -43px;
+  background: repeating-conic-gradient(
+    from 0deg,
+    rgba(255, 217, 61, 0.55) 0deg 3.4deg,
+    rgba(255, 217, 61, 0) 3.4deg 22.5deg
+  );
+  -webkit-mask-image: radial-gradient(
+    closest-side,
+    transparent 26%,
+    #000 40%,
+    #000 62%,
+    transparent 88%
+  );
+  mask-image: radial-gradient(
+    closest-side,
+    transparent 26%,
+    #000 40%,
+    #000 62%,
+    transparent 88%
+  );
+  animation: kk-spin 9s linear infinite;
+}
+.kk-charmget-ring {
+  width: 84px;
+  height: 84px;
+  border: 4px solid rgba(255, 217, 61, 0.85);
+  border-radius: 50%;
+  animation: kk-shock 0.95s ease-out 0.05s both;
+}
+.kk-charmget-disc {
+  filter: drop-shadow(0 6px 12px rgba(5, 7, 26, 0.55));
+  animation: kk-medal-pop 0.6s var(--spring) both;
+}
+.kk-charmget-title {
+  grid-row: 2;
+  margin-top: 10px;
+  font-size: clamp(1.15rem, 6.2vw, 1.75rem);
+  font-weight: 800;
+  white-space: nowrap;
+  color: var(--accent);
+  -webkit-text-stroke: 6px var(--space-deep);
+  paint-order: stroke fill;
+  text-shadow: 0 0 20px rgba(255, 217, 61, 0.6);
+}
+.kk-charmget-name {
+  grid-row: 3;
+  margin-top: 2px;
+  font-size: clamp(0.85rem, 4.2vw, 1.1rem);
+  font-weight: 800;
+  white-space: nowrap;
+  color: var(--ui);
+  -webkit-text-stroke: 5px var(--space-deep);
+  paint-order: stroke fill;
+}
+
+/* ── 隠しチャームの獲得だけ、通常のお祝いと別物に見せる ──────────
+   ふつうの「チャーム ゲット！」と同じ見た目で出すと、10本刺すごとの
+   ごほうびと区別がつかない。見出しを「！？」だけにして、何が起きたのか
+   一拍わからなくする。光は金から白へ、輪は二重、粒はひとまわり大きく、
+   表示時間も長くして、じっくり眺めさせる。 */
+.kk-charmget.secret .kk-charmget-in {
+  animation:
+    kk-charmget-in 0.62s var(--spring) both,
+    kk-charmget-out 0.6s ease 3.85s forwards;
+}
+.kk-charmget.secret .kk-charmget-rays {
+  width: 232px;
+  height: 232px;
+  margin: -74px;
+  background: repeating-conic-gradient(
+    from 0deg,
+    rgba(255, 255, 255, 0.6) 0deg 2.2deg,
+    rgba(255, 255, 255, 0) 2.2deg 15deg
+  );
+  animation: kk-spin 15s linear infinite reverse;
+}
+.kk-charmget.secret .kk-charmget-ring {
+  width: 104px;
+  height: 104px;
+  border-color: rgba(255, 255, 255, 0.9);
+}
+/* 二重目の波紋。遅れて出るので「まだ何かある」と感じさせる */
+.kk-charmget-ring2 {
+  grid-area: 1 / 1;
+  align-self: center;
+  justify-self: center;
+  width: 104px;
+  height: 104px;
+  border: 3px solid rgba(255, 255, 255, 0.55);
+  border-radius: 50%;
+  animation: kk-shock 1.25s ease-out 0.5s both;
+}
+.kk-charmget.secret .kk-charmget-title {
+  font-size: clamp(2.4rem, 13vw, 3.6rem);
+  color: #fff;
+  text-shadow: 0 0 28px rgba(255, 255, 255, 0.75);
+}
+.kk-charmget.secret .kk-charmget-name {
+  margin-top: 6px;
+}
+.kk-charmget-note {
+  grid-row: 4;
+  margin-top: 3px;
+  font-size: clamp(0.68rem, 3.4vw, 0.86rem);
+  font-weight: 800;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.88);
+  -webkit-text-stroke: 4px var(--space-deep);
+  paint-order: stroke fill;
+  animation: fade-in 0.5s ease 1.15s both;
+}
+
+/* ── とばした人へのごほうび(trophyフェーズ) ────────────── */
+.kk-unlock {
+  position: absolute;
+  left: 50%;
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  z-index: 16;
+  width: min(calc(100% - 28px), 380px);
+  padding: 14px 16px 12px;
+  border-radius: 22px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 242, 0.97),
+    rgba(247, 241, 216, 0.97)
+  );
+  box-shadow:
+    inset 0 0 0 2.5px rgba(255, 217, 61, 0.9),
+    0 12px 34px rgba(5, 7, 26, 0.55);
+  text-align: center;
+  pointer-events: none;
+  overflow: hidden;
+  transform: translateX(-50%);
+  /* 名前が刻まれた(1.0s)あとに、追い打ちで発表する */
+  animation: kk-unlock-in 0.6s var(--spring) 1.6s both;
+}
+.kk-unlock-glow {
+  position: absolute;
+  inset: -45%;
+  background: conic-gradient(
+    from 0deg,
+    rgba(255, 217, 61, 0.3),
+    transparent 25%,
+    rgba(255, 217, 61, 0.3) 50%,
+    transparent 75%,
+    rgba(255, 217, 61, 0.3)
+  );
+  animation: kk-spin 9s linear infinite;
+}
+.kk-unlock-title,
+.kk-unlock-row,
+.kk-unlock-charm,
+.kk-unlock-note {
+  position: relative;
+}
+.kk-unlock-title {
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.5;
+}
+.kk-unlock-title b {
+  font-size: 1.15em;
+  color: #c1830c;
+}
+.kk-unlock-row {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 6px;
+}
+/* ここに出るのは ぎん/きん/クリスタル/にじいろ。クリームの祝いカードに
+   じかに置くと ぎん が 1.4:1 で消えるので、しあげの棚と同じくぼみに立てる
+   (パディングで中身を細らせるだけなのでDOMは増やさない) */
+.kk-unlock-sword {
+  display: block;
+  width: 48px;
+  padding: 7px 9px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, var(--kk-well-top), var(--kk-well-bot));
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.45),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.16);
+  filter: drop-shadow(0 4px 6px rgba(5, 7, 26, 0.3));
+  animation: kk-unlock-sword 0.8s var(--spring) 1.95s both;
+}
+.kk-unlock-charm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  margin-top: 10px;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.kk-unlock-charm b {
+  font-weight: 800;
+}
+.kk-unlock-note {
+  margin-top: 9px;
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(58, 55, 48, 0.55);
+}
+
+/* ── 剣まわりのキーフレーム ──────────────────────────── */
+/* えらんだ剣がゆっくり息をする(選択位置 -7px を保つ) */
+@keyframes kk-sword-bob {
+  0%,
+  100% {
+    transform: translateY(-7px);
+  }
+  50% {
+    transform: translateY(-9.5px);
+  }
+}
+@keyframes kk-drawer-up {
+  from {
+    transform: translate(-50%, 100%);
+  }
+  to {
+    transform: translate(-50%, 0);
+  }
+}
+/* プレビューの剣が柄頭を支点にゆっくり揺れる(ぶら下がっている物の気配) */
+@keyframes kk-preview-sway {
+  0%,
+  100% {
+    transform: rotate(-1.5deg);
+  }
+  50% {
+    transform: rotate(1.5deg);
+  }
+}
+/* 隠しチャームが棚に「ぬっと」現れる */
+@keyframes kk-secret-in {
+  0% {
+    transform: scale(0);
+  }
+  58% {
+    transform: scale(1.3);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes kk-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes kk-shock {
+  0% {
+    transform: scale(0.35);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+}
+@keyframes kk-medal-pop {
+  0% {
+    transform: scale(0) rotate(-40deg);
+  }
+  60% {
+    transform: scale(1.16) rotate(7deg);
+  }
+  100% {
+    transform: scale(1) rotate(0);
+  }
+}
+@keyframes kk-charmget-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.7);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes kk-charmget-out {
+  to {
+    opacity: 0;
+    transform: translateY(-26px) scale(0.94);
+  }
+}
+@keyframes kk-unlock-in {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 44px) scale(0.9);
+  }
+  62% {
+    opacity: 1;
+    transform: translate(-50%, -5px) scale(1.03);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+@keyframes kk-unlock-sword {
+  0% {
+    opacity: 0;
+    transform: translateY(18px) rotate(-16deg) scale(0.6);
+  }
+  65% {
+    opacity: 1;
+    transform: translateY(-4px) rotate(5deg) scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotate(0) scale(1);
+  }
+}
+
+/* せまい/低い画面ではラックを一段小さくする(シートが画面を占めすぎない) */
+@media (max-height: 700px) {
+  .kk-rack {
+    height: 90px;
+    margin-bottom: 12px;
+  }
+  .kk-slot-sword {
+    width: 30px;
+    margin-left: -15px;
+  }
+  .kk-equip {
+    min-height: 42px;
+    margin-bottom: 8px;
+  }
+  /* 引き出しは棚が4段あるぶん、もう一段詰める(624px → 約600px)。
+     プレビューは「見せる」ためのものなので最後まで削らない */
+  .kk-drawer .kk-rack {
+    height: 70px;
+    margin-bottom: 3px;
+  }
+  .kk-drawer .kk-slot-sword {
+    width: 27px;
+    margin-left: -13.5px;
+  }
+  .kk-preview-stage {
+    width: 72px;
+  }
+  .kk-skin-stage {
+    height: 40px;
+  }
+  .kk-skin-sword {
+    width: 16px;
+  }
+  /* 受け皿は小さくするが、札とのあいだで1px返して指のあたり44pxは死守する。
+     13個(1行7枠)のときも同じ大きさ: ここを22pxまで落とすと44pxを割る */
+  .kk-charm-cell,
+  .kk-charms-grid.wide .kk-charm-cell {
+    width: 25px;
+    height: 25px;
+  }
+  .kk-charm-btn {
+    gap: 3px;
+  }
+}
+
+/* ── 自分の刺し回数バッジ ───────────────────────────── */
+.hud-badge-mine {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.my-color-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  flex-shrink: 0;
+}
+
+/* ── フィードの中身(「いま起きたこと」を読ませる) ─────────
+   既存の .feed / .feed-row / .feed-flag / .feed-win はそのまま使い、
+   ここには足りない分だけを足す。古い行を薄くする nth-child より後ろに
+   置いてあるので、.feed-fresh / .feed-live が上書きできる。 */
+.feed-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* 「せかいの ようす」の見出し。ここが生きている画面だと分かる目印 */
+.feed-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: rgba(255, 254, 242, 0.55);
+  text-shadow: 0 1px 4px rgba(5, 7, 26, 0.9);
+}
+.feed-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--safe);
+  box-shadow: 0 0 6px rgba(124, 227, 139, 0.9);
+  animation: feed-live-pulse 1.9s ease-in-out infinite;
+}
+@keyframes feed-live-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+/* 行の中身: 文言は詰まったら三点リーダ、番号と時刻は右に固定幅で */
+.feed-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.feed-hole {
+  flex: none;
+  font-size: 10px;
+  font-weight: 800;
+  color: rgba(255, 254, 242, 0.48);
+  font-variant-numeric: tabular-nums;
+}
+.feed-time {
+  flex: none;
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(255, 254, 242, 0.42);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 起きたばかりの行は薄めない */
+.feed-row.feed-fresh {
+  opacity: 1;
+}
+
+/* この端末で刺した行 */
+.feed-row.feed-mine {
+  color: var(--accent);
+  border-color: rgba(255, 217, 61, 0.28);
+}
+.feed-row.feed-mine .feed-hole,
+.feed-row.feed-mine .feed-time {
+  color: rgba(255, 217, 61, 0.6);
+}
+
+/* いま3Dで剣が降ってきている最中の行。着弾までのあいだ光る */
+.feed-row.feed-live {
+  opacity: 1;
+  color: var(--ui);
+  background: rgba(5, 7, 26, 0.66);
+  border-color: rgba(255, 254, 242, 0.45);
+  animation:
+    feed-in 0.35s var(--spring) both,
+    feed-live-row 0.9s ease-in-out infinite;
+}
+.feed-row.feed-live .feed-hole,
+.feed-row.feed-live .feed-time {
+  color: rgba(255, 254, 242, 0.72);
+}
+@keyframes feed-live-row {
+  0%,
+  100% {
+    box-shadow: 0 0 0 rgba(255, 254, 242, 0);
+  }
+  50% {
+    box-shadow: 0 0 10px rgba(255, 254, 242, 0.3);
+  }
+}
+
+/* 動きを減らす設定では、点滅系はとめて色だけで伝える */
+@media (prefers-reduced-motion: reduce) {
+  .feed-live-dot,
+  .feed-row.feed-live {
+    animation: none;
+  }
+}
+
+/* ── スマホ縦(主戦場)では、出すものをさらに削る ─────────
+   ねらいは「UIが月を覆う面積を減らす」こと。遊ぶのに要らない数字は消し、
+   世界の気配(フィード)は行を減らしても必ず残す。ここが このゲームの芯なので。 */
+@media (max-width: 520px) {
+  /* 自分の記録は「したく」引き出しへ移した。遊んでいる最中には要らない */
+  .hud-badge-mine {
+    display: none;
+  }
+  /* フィードは3行まで。4行目はもう読まれていない(いちばん薄い行) */
+  .feed-row:nth-child(4) {
+    display: none;
+  }
+  /* 穴の番号は遊びに効かない。どの穴かは3Dの剣と、光る行が教えてくれる */
+  .feed-hole {
+    display: none;
+  }
+  .feed-row {
+    max-width: min(72vw, 300px);
+  }
+  /* クールダウンの前置きは、減っていくリングが語っている */
+  .cd-lead {
+    display: none;
+  }
+  /* 上の札は 右上のボタン3つ(148px)との あいだで折り返さない大きさに。
+     実測: 375px幅で「第7代 ・ みんなで 120,480本」まで1行(高さ29px)。
+     100万を超えたら2行になるが、それでも他のUIとはぶつからない */
+  .hud-badge-world {
+    font-size: 11px;
+    gap: 5px;
+    padding: 5px 10px;
+  }
+  .hud-badge-world b {
+    font-size: 1.15em;
+  }
+}
+
+/* ── 待ちのあいだの誘い(WaitDeck) ─────────────────────────
+   30秒を「ただ待つ」から「したくをする時間」に変えるための小さな札。
+   自分では z-index を持たない(重ね順の入れ物を作らない)のがここの肝。
+   そうしておくと、中の札は .hud(z-index:10)の下・引き出しは上、と
+   1本の重ね順の中でふりわけられる。誘いは HUD に隠れてよく、
+   引き出しは HUD を覆わないと使えない。 */
+.wait-deck {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-family: var(--font-game);
+}
+
+/* 下に置かれているもの(ピル+フィードの束・したくボタン)のすぐ上に出す。
+   その高さは行数で変わるので、JSが測って --wd-lift で渡してくる。
+   既定値はスマホ縦でいちばん高くなるとき(3行のフィード)の実測値 */
+.wd-invite {
+  position: absolute;
+  right: calc(12px + env(safe-area-inset-right));
+  bottom: calc(var(--wd-lift, 181px) + 12px);
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 24px);
+  animation: wd-invite-in 0.42s var(--spring) both;
+}
+@keyframes wd-invite-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 見た目は したくボタンと同じクリームの札にそろえる。
+   HUDの黒い札の仲間にすると「お知らせ」に見えて、押せると気づかれない */
+.wd-invite-go {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 8px 12px 8px 10px;
+  border: 0;
+  border-radius: 17px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 254, 242, 0.97),
+    rgba(232, 226, 202, 0.97)
+  );
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.9),
+    0 3px 0 rgba(88, 82, 62, 0.55),
+    0 8px 18px rgba(5, 7, 26, 0.45);
+  font-family: var(--font-game);
+  color: var(--ui-text);
+  font-size: 11.5px;
+  font-weight: 800;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 0.14s var(--spring),
+    box-shadow 0.14s ease;
+}
+.wd-invite-go:active {
+  transform: translateY(3px);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.9),
+    0 0 0 rgba(88, 82, 62, 0.55),
+    0 4px 10px rgba(5, 7, 26, 0.45);
+}
+.wd-invite-sword {
+  display: block;
+  flex: none;
+  width: 17px;
+}
+/* 改行はJSXの<br>が決める(読点で切る)。自動折り返しには任せない */
+.wd-invite-txt {
+  white-space: nowrap;
+}
+.wd-invite-arrow {
+  flex: none;
+  font-size: 13px;
+  color: rgba(58, 55, 48, 0.5);
+}
+
+/* ことわるボタン。見た目は小さく、指のあたりは44pxに広げておく */
+.wd-invite-x {
+  position: relative;
+  pointer-events: auto;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 254, 242, 0.18);
+  border-radius: 999px;
+  background: rgba(5, 7, 26, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: rgba(255, 254, 242, 0.75);
+  font-family: var(--font-game);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform 0.15s var(--spring),
+    background 0.15s ease;
+}
+.wd-invite-x::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+}
+.wd-invite-x:active {
+  transform: scale(0.88);
+  background: rgba(5, 7, 26, 0.8);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wd-invite {
+    animation: fade-in 0.3s ease both;
+  }
+}

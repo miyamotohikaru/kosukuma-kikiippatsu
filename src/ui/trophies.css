@@ -1,0 +1,360 @@
+/* トロフィーホール専用スタイル。ui.css には依存しない。モバイル優先 */
+
+.th-root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--space-deep);
+  font-family: var(--font-game);
+}
+
+.th-canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.th-canvas canvas {
+  display: block;
+  touch-action: none;
+}
+
+/* 画面のフチを落として、殿堂の奥ゆきと文字の読みやすさを出す。
+   .th-canvas のすぐ後ろに置くので、ヘッダーやカードより下に描かれる */
+.th-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      124% 82% at 50% 44%,
+      rgba(0, 0, 0, 0) 46%,
+      rgba(2, 3, 14, 0.58) 100%
+    ),
+    linear-gradient(to bottom, rgba(5, 7, 26, 0.7), rgba(5, 7, 26, 0) 24%),
+    linear-gradient(to top, rgba(5, 7, 26, 0.62), rgba(5, 7, 26, 0) 20%);
+}
+
+/* ── ヘッダー ── */
+.th-head {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: calc(env(safe-area-inset-top) + 14px) 16px 0;
+  text-align: center;
+  pointer-events: none;
+}
+
+.th-back {
+  position: absolute;
+  left: 12px;
+  top: calc(env(safe-area-inset-top) + 12px);
+  pointer-events: auto;
+  background: rgba(255, 254, 242, 0.92);
+  color: var(--ui-text);
+  text-decoration: none;
+  font-weight: 800;
+  font-size: 13px;
+  padding: 9px 14px;
+  border-radius: 999px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  transition: transform 0.12s ease;
+}
+
+.th-back:active {
+  transform: scale(0.94);
+}
+
+.th-title {
+  margin-top: 46px;
+  color: var(--ui);
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.6);
+}
+
+.th-sub {
+  margin-top: 4px;
+  color: #aab3e0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.th-sub b {
+  color: var(--accent);
+  font-size: 15px;
+}
+
+/* ── 読み込み・メッセージ ── */
+.th-loading {
+  position: absolute;
+  right: 14px;
+  top: calc(env(safe-area-inset-top) + 16px);
+  color: #aab3e0;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(10, 14, 42, 0.7);
+  padding: 7px 12px;
+  border-radius: 999px;
+  animation: th-blink 1.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes th-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.th-message {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(88vw, 340px);
+  background: var(--ui);
+  color: var(--ui-text);
+  border-radius: 24px;
+  padding: 26px 22px;
+  text-align: center;
+  box-shadow: 0 12px 44px rgba(0, 0, 0, 0.5);
+  animation: th-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.th-message p {
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.7;
+  margin-bottom: 16px;
+}
+
+/* からっぽのときだけ出る「みほんを見る」(= ?demo=1 へ) */
+.th-demo-link {
+  display: block;
+  margin-top: 12px;
+  color: #8a8676;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ── デモ表示のしるし(スクリーンショットの邪魔をしない小ささで) ── */
+.th-demo {
+  position: absolute;
+  right: 12px;
+  top: calc(env(safe-area-inset-top) + 12px);
+  pointer-events: none;
+  max-width: 40vw;
+  text-align: right;
+  color: #b9c1ea;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+  background: rgba(10, 14, 42, 0.5);
+  border: 1px dashed rgba(185, 193, 234, 0.32);
+  border-radius: 11px;
+  padding: 4px 9px 5px;
+  opacity: 0.72;
+}
+
+.th-demo b {
+  display: block;
+  font-size: 11px;
+  color: #ffe08a;
+}
+
+/* ── ボタン(ページ送り・リトライ共通) ── */
+.th-btn {
+  display: inline-block;
+  pointer-events: auto;
+  background: var(--ui);
+  color: var(--ui-text);
+  border: none;
+  border-radius: 999px;
+  padding: 11px 20px;
+  font-family: var(--font-game);
+  font-size: 15px;
+  font-weight: 800;
+  text-decoration: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  transition: transform 0.12s ease, opacity 0.2s ease;
+}
+
+.th-btn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.th-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* ── ページ送り ── */
+.th-pager {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(env(safe-area-inset-bottom) + 14px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  pointer-events: none;
+}
+
+.th-page-no {
+  color: #aab3e0;
+  font-size: 13px;
+  font-weight: 800;
+  min-width: 52px;
+  text-align: center;
+}
+
+/* ── 詳細カード ── */
+.th-card {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom) + 72px);
+  width: min(92vw, 360px);
+  background: var(--ui);
+  color: var(--ui-text);
+  border-radius: 22px;
+  padding: 18px 20px 16px;
+  box-shadow: 0 12px 44px rgba(0, 0, 0, 0.5);
+  animation: th-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  pointer-events: auto;
+}
+
+@keyframes th-pop {
+  from {
+    transform: translateX(-50%) translateY(26px) scale(0.9);
+    opacity: 0;
+  }
+}
+
+/* th-message は translate が違うので別に */
+.th-message {
+  animation-name: th-pop-center;
+}
+
+@keyframes th-pop-center {
+  from {
+    transform: translate(-50%, -44%) scale(0.9);
+    opacity: 0;
+  }
+}
+
+.th-card-close {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(58, 55, 48, 0.08);
+  color: var(--ui-text);
+  font-size: 18px;
+  font-weight: 800;
+  font-family: var(--font-game);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+.th-card-close:active {
+  transform: scale(0.88);
+}
+
+.th-card-gen {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #a5811e;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.th-card-rare {
+  background: linear-gradient(90deg, #ffd93d, #ffb3c7, #a5c8ff);
+  color: #3a3730;
+  font-size: 11px;
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+
+.th-card-name {
+  margin-top: 3px;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.3;
+  word-break: break-all;
+}
+
+.th-card-flag {
+  margin-left: 8px;
+  font-size: 20px;
+}
+
+.th-card-rows {
+  margin-top: 12px;
+  border-top: 2px dashed rgba(58, 55, 48, 0.15);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.th-card-rows div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.th-card-rows dt {
+  color: #8a8676;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.th-card-rows dd {
+  font-size: 15px;
+  font-weight: 800;
+  text-align: right;
+}
+
+/* 横長画面(タブレット・PC)では少しゆったり */
+@media (min-width: 700px) {
+  .th-title {
+    font-size: 28px;
+    margin-top: 8px;
+  }
+
+  .th-back {
+    left: 20px;
+  }
+
+  .th-card {
+    left: auto;
+    right: 24px;
+    transform: none;
+    bottom: calc(env(safe-area-inset-bottom) + 84px);
+  }
+
+  @keyframes th-pop {
+    from {
+      transform: translateY(26px) scale(0.9);
+      opacity: 0;
+    }
+  }
+}
