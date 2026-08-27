@@ -1,18 +1,18 @@
 "use client";
 
-// 左下のフィードの「ぜんぶ みる」。
+// 左下のチャットの「ぜんぶ みる」。
 //
-// 流れていく4行は「いま世界で何が起きたか」だけを見せるもので、少し前のことは
-// すぐ押し流されてしまう。刺した人の名前が出るようになってからは
-// 「さっき誰がいたんだっけ」を読み返したくなるので、この端末で見ていたあいだの
-// 記録(store.feedLog)を、そのまま古い順に読める場所を用意した。
+// 流れていく数行はすぐ押し流されてしまうので、読み返せる場所を用意した。
+// コメント(store.chat)と刺しの記録(store.feedLog)を、live欄と同じ規則で
+// まぜて出す。ここは**新しいものが上**(開いた瞬間に最新が目に入る)。
 //
-// サーバーが返すのは直近12件だけなので、ここに出るのは
-// **開いているあいだに流れてきたぶん** だけ。過去ぜんぶの記録ではない。
+// サーバーが一度に返すのは直近のぶんだけなので、ここに出るのは
+// **この画面を開いていたあいだに流れてきたぶん** が中心になる。
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useGameStore } from "@/game/store";
 import { flagEmoji, feedLine } from "./feedText";
+import { mergeRows } from "./Feed";
 import "./ui.css";
 
 interface FeedLogProps {
@@ -22,7 +22,13 @@ interface FeedLogProps {
 
 export default function FeedLog({ open, onClose }: FeedLogProps) {
   const log = useGameStore((s) => s.feedLog);
+  const chat = useGameStore((s) => s.chat);
   const myStabs = useGameStore((s) => s.myStabs);
+  // live欄と同じ関数でまぜて、こちらは新しい順に見せる
+  const rows = useMemo(
+    () => mergeRows(chat, log, 400).reverse(),
+    [chat, log],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -42,11 +48,11 @@ export default function FeedLog({ open, onClose }: FeedLogProps) {
         className="kk-drawer feedlog"
         role="dialog"
         aria-modal="true"
-        aria-label="せかいの ようす"
+        aria-label="みんなの コメント"
       >
         <div className="kk-drawer-head">
           <span className="kk-drawer-grip" aria-hidden="true" />
-          <h2 className="kk-drawer-title">せかいの ようす</h2>
+          <h2 className="kk-drawer-title">みんなの コメント</h2>
           <button
             type="button"
             className="kk-drawer-x"
@@ -58,20 +64,39 @@ export default function FeedLog({ open, onClose }: FeedLogProps) {
         </div>
 
         <div className="kk-drawer-body">
-          {log.length === 0 ? (
+          {rows.length === 0 ? (
             <p className="feedlog-empty">
               まだ 何も 流れてきていないよ。
               <br />
-              しばらく 月を ながめていてね。
+              さいしょの コメントを かいてみて！
             </p>
           ) : (
             <>
               <ol className="feedlog-list">
-                {log.map((e) => {
+                {rows.map((row) => {
+                  const at = new Date(row.at).toLocaleTimeString("ja-JP", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  });
+                  if (row.kind === "chat") {
+                    return (
+                      <li key={row.key} className="feedlog-row is-chat">
+                        <span className="feed-flag" aria-hidden="true">
+                          {flagEmoji(row.msg.country)}
+                        </span>
+                        <span className="feed-name">
+                          {row.msg.name ?? "だれか"}
+                        </span>
+                        <span className="feed-body">{row.msg.body}</span>
+                        <span className="feed-time">{at}</span>
+                      </li>
+                    );
+                  }
+                  const e = row.e;
                   const mine = !e.win && myStabs.includes(e.holeId);
                   return (
                     <li
-                      key={`${e.at}-${e.holeId}`}
+                      key={row.key}
                       className={
                         "feedlog-row" +
                         (e.win ? " feed-win" : mine ? " feed-mine" : "")
@@ -84,19 +109,14 @@ export default function FeedLog({ open, onClose }: FeedLogProps) {
                         {feedLine(e, mine, false)}
                       </span>
                       <span className="feed-hole">#{e.holeId}</span>
-                      <span className="feed-time">
-                        {new Date(e.at).toLocaleTimeString("ja-JP", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
+                      <span className="feed-time">{at}</span>
                     </li>
                   );
                 })}
               </ol>
               <p className="feedlog-note">
-                ここに たまるのは、この画面を 開いていたあいだに
-                流れてきたぶんだよ。
+                コメントは 新しい方から さかのぼれるよ。
+                刺した記録は、この画面を 開いていたあいだのぶんだけ。
               </p>
             </>
           )}

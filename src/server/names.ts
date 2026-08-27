@@ -2,7 +2,7 @@
 // トロフィーホールに永久に刻まれる名前なので、見えない文字や露骨な言葉は
 // ここで確実に弾く(置換はせず、理由を返してクライアントに再入力させる)。
 
-import { NAME_MAX_LEN } from "@/lib/config";
+import { CHAT_MAX_LEN, NAME_MAX_LEN } from "@/lib/config";
 
 /** sanitizeName の結果。ok:false のとき reason はそのままUIに出せる文言 */
 export type NameResult =
@@ -91,4 +91,73 @@ export function sanitizeName(raw: unknown): NameResult {
   }
 
   return { ok: true, name: s };
+}
+
+// ── チャット ────────────────────────────────────────
+// 名前とちがって「その場で流れて消える」ものだが、世界中の画面に出る点は同じ。
+// 名前より少し長く書けるぶん、名前には無い落とし穴を足して塞ぐ:
+//   ・URL / メールアドレス(誘導に使われる)
+//   ・同じ文字の長い連打(「ｗｗｗｗｗ…」で行を占領する)
+//   ・改行(1件で何行も取られると、他の人のコメントが押し出される)
+
+const URL_RE = /(https?:\/\/|www\.|[\w.-]+@[\w.-]+\.[a-z]{2,}|[\w-]+\.(com|net|org|jp|io|co|xyz|shop|link|me|tv|app)\b)/i;
+
+/** 同じ文字が n 回以上つづくか(全角の連打も拾う) */
+function hasLongRun(s: string, n: number): boolean {
+  const cps = Array.from(s);
+  let run = 1;
+  for (let i = 1; i < cps.length; i++) {
+    if (cps[i] === cps[i - 1]) {
+      run++;
+      if (run >= n) return true;
+    } else {
+      run = 1;
+    }
+  }
+  return false;
+}
+
+export type ChatCheck =
+  | { ok: true; body: string }
+  | { ok: false; reason: string };
+
+/**
+ * コメント1件をサニタイズする。
+ * 名前と同じで、**置換して通すことはしない**(勝手に伏せ字にされるより、
+ * 弾いて書き直してもらったほうが本人にも分かる)。
+ */
+export function sanitizeChat(raw: unknown): ChatCheck {
+  if (typeof raw !== "string") {
+    return { ok: false, reason: "なにか かいてね" };
+  }
+
+  let s = raw
+    .normalize("NFC")
+    .replace(CONTROL_RE, "")
+    .replace(INVISIBLE_RE, "");
+  // 改行もふくめて空白は1つに畳む(1件で何行も取らせない)
+  s = s.replace(/\s+/g, " ").trim();
+  s = Array.from(s).slice(0, CHAT_MAX_LEN).join("").trim();
+  if (s.length === 0) {
+    return { ok: false, reason: "なにか かいてね" };
+  }
+
+  if (URL_RE.test(s)) {
+    return { ok: false, reason: "リンクは かけないよ" };
+  }
+  if (hasLongRun(s, 12)) {
+    return { ok: false, reason: "おなじ文字が おおすぎるよ" };
+  }
+
+  const probe = foldKana(s.normalize("NFKC").toLowerCase()).replace(
+    /[\s・._-]/g,
+    "",
+  );
+  for (const word of NG_WORDS) {
+    if (probe.includes(word)) {
+      return { ok: false, reason: "その ことばは かけないよ" };
+    }
+  }
+
+  return { ok: true, body: s };
 }

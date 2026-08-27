@@ -18,6 +18,23 @@ export const POLL_MS = 4000;
 /** 名前の最大文字数 */
 export const NAME_MAX_LEN = 12;
 
+// ── チャット ────────────────────────────────────────
+/** 1回に書ける文字数。長い文はチャットの流れを止めるので短く切る */
+export const CHAT_MAX_LEN = 60;
+/** 連投の間隔(秒)。同じ人が流れを埋めないように */
+export const CHAT_COOLDOWN_SEC = 8;
+/**
+ * 同じ回線(ip_hash)から1分に書ける本数。
+ * 端末ごとの間隔とは別に見る。学校や会社のように出口IPを共有している人たちが、
+ * お互いの発言でお互いを止めてしまわないよう、間隔ではなく本数で制限する。
+ */
+export const CHAT_BURST_PER_MIN = 12;
+
+/** サーバーが返す直近のコメント数 */
+export const CHAT_FETCH = 30;
+/** 左下に出す行数(コメント + 刺しの記録をまぜて、新しい順に) */
+export const FEED_ROWS = 5;
+
 // ── 演出タイミング (ms) ──────────────────────────────
 export const T_STAB = 1100; // 剣を構えて刺すまで
 export const T_SUSPENSE = 1600; // 刺した後の「……」の間

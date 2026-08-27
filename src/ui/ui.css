@@ -233,6 +233,10 @@
 
 /* 下部: クールダウンピル + フィード */
 .hud-bottom {
+  /* スマホのソフトキーボードぶん持ち上げる(Feed.tsx が --kk-kb を書く)。
+     HUDは absolute なので、ページのスクロールでは逃げられない */
+  transform: translateY(calc(-1 * var(--kk-kb, 0px)));
+  transition: transform 0.18s ease;
   position: absolute;
   left: 0;
   right: 0;
@@ -266,16 +270,20 @@
   color: rgba(255, 254, 242, 0.88);
   animation: feed-in 0.35s var(--spring) both;
 }
-/* 古い行ほど薄く。ただし4行目が消えかけていると「チャットが流れている」
-   のではなく「バグで途切れている」ように見えるので、下限は残す */
-.feed-row:nth-child(2) {
-  opacity: 0.88;
+/* いちばん下が最新(YouTubeのライブと同じ向き)。上へ行くほど薄くする。
+   nth-last-child で数えるのは、行数が5に満たないときも
+   「いちばん下が濃い」を守るため */
+.feed-row:nth-last-child(2) {
+  opacity: 0.9;
 }
-.feed-row:nth-child(3) {
-  opacity: 0.76;
+.feed-row:nth-last-child(3) {
+  opacity: 0.8;
 }
-.feed-row:nth-child(4) {
-  opacity: 0.64;
+.feed-row:nth-last-child(4) {
+  opacity: 0.7;
+}
+.feed-row:nth-last-child(n + 5) {
+  opacity: 0.6;
 }
 .feed-flag {
   font-size: 14px;
@@ -2887,4 +2895,146 @@ button.kk-charm-btn:active .kk-charm-cell {
   margin: 22px 2px;
   text-align: center;
   font-size: 12px;
+}
+
+
+/* ── チャット ────────────────────────────────────────
+   左下の欄は「みんなのコメント」が主役。刺しの記録(.feed-sys)は
+   同じ箱に混ざるが、一段しずかに置いて主従をはっきりさせる。 */
+.feed-wrap {
+  width: min(78vw, 340px);
+}
+/* 書いているあいだは濃くする。手元が見えないまま打つのがいちばん不安 */
+.feed-wrap.is-writing {
+  background: linear-gradient(
+    180deg,
+    rgba(5, 7, 26, 0.62),
+    rgba(5, 7, 26, 0.78)
+  );
+  border-color: rgba(255, 254, 242, 0.22);
+}
+
+.feed-row.feed-chat {
+  align-items: baseline;
+  max-width: 100%;
+  padding: 5px 12px 5px 8px;
+  background: rgba(5, 7, 26, 0.5);
+}
+/* 名前は読み手がいちばん先に見るところ。色で本文と分ける */
+.feed-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--accent, #ffd93d);
+}
+.feed-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* コメントは折り返してぜんぶ読ませる(名前だけは1行に詰める) */
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: rgba(255, 254, 242, 0.95);
+}
+
+/* 刺しの記録。コメントの邪魔をしない濃さまで下げる */
+.feed-row.feed-sys {
+  font-size: 10.5px;
+  padding: 3px 10px 3px 7px;
+  background: rgba(5, 7, 26, 0.34);
+  color: rgba(255, 254, 242, 0.66);
+}
+.feed-row.feed-sys .feed-flag {
+  font-size: 11px;
+}
+/* 当たりの行だけは、しずかにしない */
+.feed-row.feed-sys.feed-win {
+  font-size: 11.5px;
+  color: var(--accent);
+}
+
+.feed-empty {
+  margin: 2px 4px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: rgba(255, 254, 242, 0.5);
+  text-shadow: 0 1px 4px rgba(5, 7, 26, 0.9);
+}
+
+/* ── 入力欄 ── */
+.chat-form {
+  display: flex;
+  gap: 5px;
+  margin-top: 2px;
+}
+.chat-input {
+  pointer-events: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 7px 11px;
+  border: 1px solid rgba(255, 254, 242, 0.22);
+  border-radius: 999px;
+  background: rgba(5, 7, 26, 0.62);
+  color: #fffef2;
+  /* 16px 未満だと iOS が勝手に画面を拡大する。ここだけは縮めない */
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.2;
+}
+.chat-input::placeholder {
+  color: rgba(255, 254, 242, 0.42);
+  font-size: 13px;
+}
+.chat-input:focus {
+  outline: none;
+  border-color: rgba(255, 217, 61, 0.6);
+  background: rgba(5, 7, 26, 0.82);
+}
+.chat-send {
+  pointer-events: auto;
+  flex: 0 0 auto;
+  padding: 0 13px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffe071, #f5c400);
+  color: #241c00;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition:
+    transform 0.12s var(--spring),
+    filter 0.14s ease;
+}
+.chat-send:active {
+  transform: scale(0.93);
+}
+.chat-send:disabled {
+  filter: grayscale(0.7) brightness(0.75);
+  cursor: default;
+}
+
+/* ── 「ぜんぶ みる」の中のコメント行 ── */
+.feedlog-row.is-chat {
+  align-items: baseline;
+  color: #4a4438;
+  background: rgba(245, 196, 0, 0.09);
+}
+.feedlog-row.is-chat .feed-name {
+  color: #a97d00;
+  text-shadow: none;
+}
+.feedlog-row.is-chat .feed-body {
+  flex: 1 1 auto;
+  color: #3a3730;
+  text-shadow: none;
+  white-space: normal;
 }

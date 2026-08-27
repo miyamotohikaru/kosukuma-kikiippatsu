@@ -8,6 +8,8 @@ import { nanoid } from "nanoid";
 import {
   CHARMS,
   charmLevelOf,
+  CHAT_COOLDOWN_SEC,
+  CHAT_MAX_LEN,
   EARTH_CHARM_INDEX,
   NORMAL_CHARM_COUNT,
   COOLDOWN_SEC,
@@ -52,6 +54,8 @@ import {
   skinOf,
 } from "@/lib/style";
 import type {
+  ChatMessage,
+  ChatResult,
   ClaimResponse,
   StabResult,
   StateResponse,
@@ -222,6 +226,16 @@ interface GameState {
    */
   feedLog: StateResponse["recent"];
 
+  /**
+   * みんなのコメント(新しい順)。刺しの記録とまぜて左下に流す。
+   * サーバーの id が並び順であり、重複排除の鍵でもある。
+   */
+  chat: ChatMessage[];
+  /** 送信中(二重送信よけ)。ボタンを押せなくする */
+  chatSending: boolean;
+  /** つぎに書けるようになる時刻(epoch ms)。連投制限 */
+  chatCooldownUntil: number;
+
   /** こすくまくんを つついた回数(この端末) */
   pokeCount: number;
   /** つつきの隠しチャームを持っているか */
@@ -264,6 +278,11 @@ interface GameState {
   setNickname: (name: string) => void;
   /** こすくまくんを つついた。POKE_CHARM_NEED 回で隠しチャームが開く */
   pokeKosukuma: () => void;
+  /**
+   * コメントを送る。通れば自分の画面にはすぐ出す(ポーリングを待たない)。
+   * @returns true = 送れた(入力欄を空にしてよい)
+   */
+  sendChat: (text: string) => Promise<boolean>;
   /** こすくまくんにしゃべらせる */
   say: (text: string, tone?: SpeechTone, ms?: number) => void;
 }
@@ -345,6 +364,7 @@ function demoWatchState(cur: {
   roundNo: number;
   stabCount: number;
   recent: StateResponse["recent"];
+  chat: ChatMessage[];
 }): StateResponse {
   const round = Math.max(1, cur.roundNo);
   return {
@@ -359,6 +379,7 @@ function demoWatchState(cur: {
     stabStylesBase64: "",
     stabCharmsBase64: "",
     recent: cur.recent,
+    chat: cur.chat,
     prevWinner: {
       roundNo: round,
       name: "だれか",
@@ -536,6 +557,9 @@ function applyPreviewParams(set: (p: Partial<GameState>) => void): void {
 /** 端末に貯める刺しの記録の上限。多すぎても読めないので、これくらいで足りる */
 const FEED_LOG_MAX = 120;
 
+/** 端末に貯めるコメントの上限。「ぜんぶ みる」で遡れるぶん */
+const CHAT_LOG_MAX = 200;
+
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -606,6 +630,22 @@ export const useGameStore = create<GameState>((set, get) => {
     set({ equippedCharms: next });
   };
 
+  /**
+   * 届いたコメントを手元の一覧へ混ぜる(新しい順・id で重複排除)。
+   * **手元にあってサーバーにまだ無いもの(送った直後)は捨てない。**
+   * CDNのキャッシュのせいで、自分の書き込みが数秒だけ応答に現れないため。
+   */
+  const mergeChat = (
+    mine: ChatMessage[],
+    incoming: ChatMessage[]
+  ): ChatMessage[] => {
+    if (incoming.length === 0) return mine;
+    const seen = new Set(incoming.map((m) => m.id));
+    const merged = [...incoming, ...mine.filter((m) => !seen.has(m.id))];
+    merged.sort((a, b) => b.id - a.id);
+    return merged.slice(0, CHAT_LOG_MAX);
+  };
+
   /** 流れてきた刺しを、この端末の記録へ足す(新しい順・重複はしない) */
   const mergeFeedLog = (
     log: StateResponse["recent"],
@@ -674,6 +714,7 @@ export const useGameStore = create<GameState>((set, get) => {
       myStabs,
       recent: s.recent,
       feedLog: mergeFeedLog(cur.feedLog, s.recent),
+      chat: mergeChat(cur.chat, s.chat),
       prevWinner: s.prevWinner,
       connected: true,
     });
@@ -903,6 +944,9 @@ export const useGameStore = create<GameState>((set, get) => {
     caughtSky: initialCaughtSky,
     nickname: (LS.get("kk-nick") || "").slice(0, NAME_MAX_LEN) || null,
     feedLog: [],
+    chat: [],
+    chatSending: false,
+    chatCooldownUntil: 0,
     pokeCount: initialPokes,
     hasPokeCharm: initialPokeCharm,
     speech: null,
@@ -1458,6 +1502,61 @@ export const useGameStore = create<GameState>((set, get) => {
       equipCharm(POKE_CHARM_INDEX);
       set({ newCharm: POKE_CHARM_INDEX });
       emitGameEvent("charm-get");
+    },
+
+    sendChat: async (text: string) => {
+      const cur = get();
+      if (cur.chatSending) return false;
+      const body = text.replace(/\s+/g, " ").trim().slice(0, CHAT_MAX_LEN);
+      if (!body) return false;
+      if (cur.chatCooldownUntil > Date.now()) {
+        const sec = Math.ceil((cur.chatCooldownUntil - Date.now()) / 1000);
+        cur.showToast(`つぎに かけるまで あと${sec}びょう`);
+        emitGameEvent("error");
+        return false;
+      }
+
+      set({ chatSending: true });
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            body,
+            fp: getFingerprint(),
+            nickname: cur.nickname ?? undefined,
+          }),
+        });
+        const data: ChatResult = await res.json();
+
+        if (data.result === "cooldown") {
+          set({ chatCooldownUntil: Date.now() + data.remainingSec * 1000 });
+          get().showToast(`つぎに かけるまで あと${data.remainingSec}びょう`);
+          emitGameEvent("error");
+          return false;
+        }
+        if (data.result !== "ok") {
+          get().showToast(data.message || "その コメントは かけないよ");
+          emitGameEvent("error");
+          return false;
+        }
+
+        // 自分の書き込みは、ポーリング(最大7秒)を待たずにその場で出す。
+        // /api/state はCDNで3秒キャッシュされるので、待たせると
+        // 「送れたのか分からない」時間が生まれてしまう
+        set({
+          chat: mergeChat(get().chat, [data.message]),
+          chatCooldownUntil: Date.now() + CHAT_COOLDOWN_SEC * 1000,
+        });
+        emitGameEvent("ui-tap");
+        return true;
+      } catch {
+        get().showToast("つうしんエラー。もういちど ためしてね");
+        emitGameEvent("error");
+        return false;
+      } finally {
+        set({ chatSending: false });
+      }
     },
 
     setNickname: (name: string) => {

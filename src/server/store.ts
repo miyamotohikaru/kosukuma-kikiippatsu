@@ -7,9 +7,21 @@
 
 import { randomBytes, randomInt } from "node:crypto";
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
-import { COOLDOWN_SEC, HOLE_COUNT, SWORD_COLORS } from "@/lib/config";
+import {
+  CHAT_BURST_PER_MIN,
+  CHAT_COOLDOWN_SEC,
+  CHAT_FETCH,
+  COOLDOWN_SEC,
+  HOLE_COUNT,
+  SWORD_COLORS,
+} from "@/lib/config";
 import { emptyMask, setBit } from "@/lib/bitmask";
-import type { StabEvent, TrophyRecord, WinnerInfo } from "@/lib/types";
+import type {
+  ChatMessage,
+  StabEvent,
+  TrophyRecord,
+  WinnerInfo,
+} from "@/lib/types";
 
 // ── ルートハンドラへ公開する契約 ─────────────────────
 
@@ -29,6 +41,8 @@ export interface SnapshotData {
   recent: StabEvent[];
   /** 直前ラウンド(roundNo-1)の勝者。初代なら null */
   prevWinner: WinnerInfo | null;
+  /** 新しい順・最大 CHAT_FETCH 件のコメント */
+  chat: ChatMessage[];
 }
 
 /** POST /api/stab の入力(HTTP層で ip_hash 等へ変換済みのもの) */
@@ -74,6 +88,8 @@ export interface IGameStore {
   claim(roundNo: number, token: string, name: string): Promise<ClaimOutcome>;
   /** won_at が入ったラウンドを新しい順でページング */
   getTrophies(page: number, perPage: number): Promise<TrophyPage>;
+  /** コメントを1件書き込む(検閲は呼び出し側で済ませてある) */
+  postChat(input: ChatInput): Promise<ChatOutcome>;
 }
 
 // ── 共通ヘルパ ───────────────────────────────────────
@@ -94,6 +110,12 @@ const toMs = (v: string | Date): number =>
 /** 最終刺し時刻(epoch ms)からクールダウンの残り秒を計算(0なら制限なし) */
 function remainingCooldownSec(lastAtMs: number): number {
   const remaining = COOLDOWN_SEC - (Date.now() - lastAtMs) / 1000;
+  return remaining > 0 ? Math.ceil(remaining) : 0;
+}
+
+/** 最終コメント時刻(epoch ms)から連投の残り秒 */
+function remainingChatSec(lastAtMs: number): number {
+  const remaining = CHAT_COOLDOWN_SEC - (Date.now() - lastAtMs) / 1000;
   return remaining > 0 ? Math.ceil(remaining) : 0;
 }
 
@@ -200,6 +222,21 @@ class PostgresStore implements IGameStore {
         UPDATE kk_rounds SET claimed_at = won_at
         WHERE winner_name IS NOT NULL AND claimed_at IS NULL`;
     }
+    // コメント。刺しとちがって代をまたいで残す(「ライブのコメント欄」なので、
+    // 代が変わっても流れが途切れないほうが自然)
+    await this.sql`
+      CREATE TABLE IF NOT EXISTS kk_chat (
+        id BIGSERIAL PRIMARY KEY,
+        round_no INT NOT NULL,
+        name VARCHAR(24),
+        country TEXT,
+        body VARCHAR(80) NOT NULL,
+        fp TEXT,
+        ip_hash TEXT,
+        created_at TIMESTAMPTZ DEFAULT now()
+      )`;
+    await this.sql`CREATE INDEX IF NOT EXISTS kk_chat_id_idx ON kk_chat (id DESC)`;
+    await this.sql`CREATE INDEX IF NOT EXISTS kk_chat_fp_idx ON kk_chat (fp, created_at)`;
     // レート制限(直近の刺し検索)用インデックス
     await this.sql`CREATE INDEX IF NOT EXISTS kk_stabs_ip_idx ON kk_stabs (ip_hash, created_at)`;
     await this.sql`CREATE INDEX IF NOT EXISTS kk_stabs_fp_idx ON kk_stabs (fp, created_at)`;
@@ -299,6 +336,28 @@ class PostgresStore implements IGameStore {
     }));
   }
 
+  /** 新しい順の直近コメント。代はまたいで残す */
+  private async chatOf(): Promise<ChatMessage[]> {
+    const rows = (await this.sql`
+      SELECT id, name, country, body, created_at FROM kk_chat
+      ORDER BY id DESC LIMIT ${CHAT_FETCH}
+    `) as {
+      id: string | number;
+      name: string | null;
+      country: string | null;
+      body: string;
+      created_at: string | Date;
+    }[];
+    // BIGSERIAL は文字列で返ることがある。id は並び順と重複排除の鍵なので必ず数値へ
+    return rows.map((r) => ({
+      id: Number(r.id),
+      name: r.name,
+      country: r.country,
+      body: r.body,
+      at: toIso(r.created_at),
+    }));
+  }
+
   /** 指定ラウンドの勝者情報。未決着・存在しないなら null */
   private async winnerOf(roundNo: number): Promise<WinnerInfo | null> {
     if (roundNo < 1) return null;
@@ -322,10 +381,11 @@ class PostgresStore implements IGameStore {
   async getSnapshot(): Promise<SnapshotData> {
     await this.ensureSchema();
     const active = await this.activeRound();
-    const [stabs, recent, prevWinner] = await Promise.all([
+    const [stabs, recent, prevWinner, chat] = await Promise.all([
       this.stabsStateOf(active.roundNo),
       this.recentOf(active.roundNo),
       this.winnerOf(active.roundNo - 1),
+      this.chatOf(),
     ]);
     return {
       roundNo: active.roundNo,
@@ -337,6 +397,7 @@ class PostgresStore implements IGameStore {
       stabCharms: stabs.charms,
       recent,
       prevWinner,
+      chat,
     };
   }
 
@@ -452,6 +513,48 @@ class PostgresStore implements IGameStore {
     return { kind: "win", claimToken: token, roundNo };
   }
 
+  async postChat(input: ChatInput): Promise<ChatOutcome> {
+    await this.ensureSchema();
+    // 連投制限。ベストエフォート(厳密な排他は要らない)。
+    // **端末(fp)は間隔で、回線(ip_hash)は1分あたりの本数で見る。**
+    // 回線でも間隔を見ると、学校や会社のように出口IPを共有している人たちが
+    // お互いの発言でお互いを止めてしまう
+    const limits = (await this.sql`
+      SELECT
+        max(created_at) FILTER (WHERE fp = ${input.fp}) AS mine,
+        count(*) FILTER (WHERE ip_hash = ${input.ipHash}) AS burst
+      FROM kk_chat
+      WHERE created_at > now() - interval '1 minute'
+        AND (fp = ${input.fp} OR ip_hash = ${input.ipHash})
+    `) as { mine: string | Date | null; burst: string | number }[];
+    const mine = limits[0]?.mine;
+    if (mine) {
+      const remainingSec = remainingChatSec(toMs(mine));
+      if (remainingSec > 0) return { kind: "cooldown", remainingSec };
+    }
+    if (Number(limits[0]?.burst ?? 0) >= CHAT_BURST_PER_MIN) {
+      return { kind: "cooldown", remainingSec: 20 };
+    }
+
+    const rows = (await this.sql`
+      INSERT INTO kk_chat (round_no, name, country, body, fp, ip_hash)
+      VALUES (${input.roundNo}, ${input.name}, ${input.country}, ${input.body},
+              ${input.fp}, ${input.ipHash})
+      RETURNING id, created_at
+    `) as { id: string | number; created_at: string | Date }[];
+    const r = rows[0];
+    return {
+      kind: "ok",
+      message: {
+        id: Number(r.id),
+        name: input.name,
+        country: input.country,
+        body: input.body,
+        at: toIso(r.created_at),
+      },
+    };
+  }
+
   async claim(roundNo: number, token: string, name: string): Promise<ClaimOutcome> {
     await this.ensureSchema();
     // token一致 & 未クレームのときだけ1行更新される(条件付きUPDATEで排他)
@@ -524,12 +627,33 @@ interface MemStab {
   at: number; // epoch ms
 }
 
+/** POST /api/chat がサーバーへ渡すもの(検閲ずみの本文) */
+export interface ChatInput {
+  roundNo: number;
+  body: string;
+  name: string | null;
+  country: string | null;
+  fp: string;
+  ipHash: string;
+}
+
+export type ChatOutcome =
+  | { kind: "ok"; message: ChatMessage }
+  | { kind: "cooldown"; remainingSec: number };
+
 interface MemoryData {
   rounds: MemRound[];
   /** roundNo → (holeId → 刺し)。Postgres の PK(round_no, hole_id) に相当 */
   stabs: Map<number, Map<number, MemStab>>;
   lastByIp: Map<string, number>;
   lastByFp: Map<string, number>;
+  /** コメント(新しい順)。開発用の揮発ストアなので、プロセスが落ちれば消える */
+  chat: ChatMessage[];
+  chatSeq: number;
+  /** 回線ごとの直近の書き込み時刻(1分の本数を数えるため) */
+  chatByIp: Map<string, number[]>;
+  /** 端末ごとの最終書き込み時刻 */
+  chatByFp: Map<string, number>;
 }
 
 function newMemRound(roundNo: number): MemRound {
@@ -564,6 +688,10 @@ class MemoryStore implements IGameStore {
     stabs: new Map(),
     lastByIp: new Map(),
     lastByFp: new Map(),
+    chat: [],
+    chatSeq: 0,
+    chatByIp: new Map(),
+    chatByFp: new Map(),
   };
 
   private activeRound(): MemRound {
@@ -651,6 +779,7 @@ class MemoryStore implements IGameStore {
       stabCharms: this.charmsOf(active.roundNo),
       recent,
       prevWinner: prev ? memWinnerInfo(prev) : null,
+      chat: this.data.chat.slice(0, CHAT_FETCH),
     };
   }
 
@@ -709,6 +838,35 @@ class MemoryStore implements IGameStore {
       mask: this.maskOf(active.roundNo),
       stabCount: active.stabCount,
     };
+  }
+
+  async postChat(input: ChatInput): Promise<ChatOutcome> {
+    const last = this.data.chatByFp.get(input.fp) ?? 0;
+    if (last > 0) {
+      const remainingSec = remainingChatSec(last);
+      if (remainingSec > 0) return { kind: "cooldown", remainingSec };
+    }
+    const now = Date.now();
+    // 回線ごとは「1分に何本まで」(共有IPの人どうしが止め合わないように)
+    const burst = (this.data.chatByIp.get(input.ipHash) ?? []).filter(
+      (t) => now - t < 60_000,
+    );
+    if (burst.length >= CHAT_BURST_PER_MIN) {
+      return { kind: "cooldown", remainingSec: 20 };
+    }
+    const message: ChatMessage = {
+      id: ++this.data.chatSeq,
+      name: input.name,
+      country: input.country,
+      body: input.body,
+      at: new Date(now).toISOString(),
+    };
+    // 新しい順に持つ。あふれたぶんは捨てる(この実装は開発用の揮発ストア)
+    this.data.chat.unshift(message);
+    if (this.data.chat.length > CHAT_FETCH * 4) this.data.chat.length = CHAT_FETCH * 4;
+    this.data.chatByFp.set(input.fp, now);
+    this.data.chatByIp.set(input.ipHash, [...burst, now]);
+    return { kind: "ok", message };
   }
 
   async claim(roundNo: number, token: string, name: string): Promise<ClaimOutcome> {

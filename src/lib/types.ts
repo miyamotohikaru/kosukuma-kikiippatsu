@@ -24,6 +24,18 @@ export interface WinnerInfo {
   stabCount: number;
 }
 
+/** チャットの1件。左下に流れ、「ぜんぶ みる」で読み返せる */
+export interface ChatMessage {
+  /** サーバーの連番。これが新しさの順番であり、重複排除の鍵でもある */
+  id: number;
+  /** 書いた人のニックネーム。未登録は null → 「だれか」表示 */
+  name: string | null;
+  country: string | null;
+  body: string;
+  /** ISO8601 */
+  at: string;
+}
+
 /** GET /api/state のレスポンス */
 export interface StateResponse {
   roundNo: number;
@@ -52,7 +64,24 @@ export interface StateResponse {
   recent: StabEvent[];
   /** 直前のラウンドの勝者(roundNo-1)。初代ならnull */
   prevWinner: WinnerInfo | null;
+  /** 新しい順・最大 CHAT_FETCH 件のコメント */
+  chat: ChatMessage[];
 }
+
+/** POST /api/chat のリクエストボディ */
+export interface ChatRequest {
+  body: string;
+  /** クライアント指紋(連投制限に使う) */
+  fp: string;
+  /** 表示名。省略・空なら「だれか」 */
+  nickname?: string;
+}
+
+/** POST /api/chat のレスポンス */
+export type ChatResult =
+  | { result: "ok"; message: ChatMessage }
+  | { result: "cooldown"; remainingSec: number }
+  | { result: "rejected"; message: string };
 
 /** POST /api/stab のリクエストボディ */
 export interface StabRequest {

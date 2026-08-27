@@ -35,6 +35,7 @@ async function loadState(): Promise<StateResponse> {
           stabCharmsBase64: u32ToBase64(snap.stabCharms),
           recent: snap.recent,
           prevWinner: snap.prevWinner,
+          chat: snap.chat,
         };
         cached = { at: Date.now(), body };
         return body;
