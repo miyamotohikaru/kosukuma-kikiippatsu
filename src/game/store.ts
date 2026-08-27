@@ -204,7 +204,7 @@ interface GameState {
    * 「あと何回で開くか」を教えるためだけの、消えもの。
    * チャームが開いた回はファンファーレに任せるので null。
    */
-  skyPop: { id: number; text: string } | null;
+  tapPop: { id: number; text: string; hot?: boolean } | null;
 
   /**
    * 開いた「空のチャーム」。SKY_KINDS の順に立てたビット。
@@ -228,6 +228,10 @@ interface GameState {
   chatSending: boolean;
   /** つぎに書けるようになる時刻(epoch ms)。連投制限 */
   chatCooldownUntil: number;
+  /** さかのぼれる古いコメントがまだあるか */
+  chatHasMore: boolean;
+  /** 古いぶんを取りにいっている最中か */
+  chatLoadingOlder: boolean;
 
   /** こすくまくんを つついた回数(この端末) */
   pokeCount: number;
@@ -276,6 +280,8 @@ interface GameState {
    * @returns true = 送れた(入力欄を空にしてよい)
    */
   sendChat: (text: string) => Promise<boolean>;
+  /** いま持っているいちばん古いコメントより前を、1ページぶん取りにいく */
+  loadOlderChat: () => Promise<void>;
   /** こすくまくんにしゃべらせる */
   say: (text: string, tone?: SpeechTone, ms?: number) => void;
 }
@@ -547,8 +553,11 @@ function applyPreviewParams(set: (p: Partial<GameState>) => void): void {
   }
 }
 
-/** 端末に貯めるコメントの上限。「ぜんぶ みる」で遡れるぶん */
-const CHAT_LOG_MAX = 200;
+/**
+ * 手元に持つコメントの上限。「ぜんぶ みる」でさかのぼると増えていくので、
+ * ポーリングぶん(30件)よりずっと大きく取ってある。
+ */
+const CHAT_LOG_MAX = 500;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -917,12 +926,14 @@ export const useGameStore = create<GameState>((set, get) => {
     ].slice(-MAX_EQUIPPED_CHARMS),
     earthBoomAt: null,
     skyCatches: initialSkyCatches,
-    skyPop: null,
+    tapPop: null,
     caughtSky: initialCaughtSky,
     nickname: (LS.get("kk-nick") || "").slice(0, NAME_MAX_LEN) || null,
     chat: [],
     chatSending: false,
     chatCooldownUntil: 0,
+    chatHasMore: true,
+    chatLoadingOlder: false,
     pokeCount: initialPokes,
     hasPokeCharm: initialPokeCharm,
     speech: null,
@@ -1443,7 +1454,7 @@ export const useGameStore = create<GameState>((set, get) => {
         // まだ届いていない。あと何回かを、その場で数字にして返す
         const need = SKY_CATCH_NEED[after];
         set({
-          skyPop: {
+          tapPop: {
             id: Date.now(),
             text:
               need === undefined
@@ -1469,7 +1480,17 @@ export const useGameStore = create<GameState>((set, get) => {
       const n = cur.pokeCount + 1;
       LS.set("kk-poke-n", String(n));
       if (n < POKE_CHARM_NEED || POKE_CHARM_INDEX < 0) {
-        set({ pokeCount: n });
+        // あと何回かを、指のところへ。**残り100を切ったら赤く大きく**して、
+        // 「そろそろ何か起きる」を数字だけでなく見た目でも伝える
+        const left = POKE_CHARM_NEED - n;
+        set({
+          pokeCount: n,
+          tapPop: {
+            id: Date.now(),
+            text: `あと ${left.toLocaleString()}`,
+            hot: left <= 100,
+          },
+        });
         return;
       }
       // 1万回。地球の爆発と同じで、条件はどこにも書かれていない
@@ -1532,6 +1553,31 @@ export const useGameStore = create<GameState>((set, get) => {
         return false;
       } finally {
         set({ chatSending: false });
+      }
+    },
+
+    loadOlderChat: async () => {
+      const cur = get();
+      if (cur.chatLoadingOlder || !cur.chatHasMore) return;
+      // 手元のいちばん古い id より前を頼む。1件も無いうちは「いちばん新しい所から」
+      const oldest = cur.chat.length > 0 ? cur.chat[cur.chat.length - 1].id : 0;
+      set({ chatLoadingOlder: true });
+      try {
+        const q = oldest > 0 ? `?before=${oldest}` : "";
+        const res = await fetch(`/api/chat${q}`);
+        if (!res.ok) throw new Error(String(res.status));
+        const data = (await res.json()) as {
+          items: ChatMessage[];
+          hasMore: boolean;
+        };
+        set({
+          chat: mergeChat(get().chat, data.items),
+          chatHasMore: data.hasMore,
+        });
+      } catch {
+        // 取れなくても致命ではない。ボタンは残しておいて、もう一度押せる
+      } finally {
+        set({ chatLoadingOlder: false });
       }
     },
 

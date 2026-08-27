@@ -1,102 +1,88 @@
 "use client";
 
-// 右上の「だれが刺したか」の通知。
+// 右上の「だれが刺したか」の記録。
 //
-// 左下のフィードは "世界の空気" を出すための背景で、目で追うものではない。
-// こちらは逆に、届いた瞬間だけポンと出て、数秒で消える前景の通知
-// (ゲームの実績ポップアップと同じ役目)。読ませたいのは名前ひとつ。
+// はじめは数秒で消えるポップアップにしていたが、**見ているうちに消えてしまって
+// 誰がいたのか追えなかった**。ここは通知ではなく、月のできごとが流れている
+// 小さな窓にする。左下のコメント欄と同じ読み方(名前・どのくらい前か)で、
+// ただし置き場所と役目をはっきり分けてある:
+//   ・左下 = みんなが書いたコメント(読む)
+//   ・右上 = 月で起きたこと(眺める)
 //
-// 一度に何件も届くことがあるので、出すのは新しい方から MAX_SHOWN 件まで。
-// 全部出すと画面の右側が通知で埋まってしまう。
+// いちばん上が最新。上から下へ古くなる(上端に貼りついた窓なので、
+// 新しいものが目の高さに来る向きにしてある)。
 
-import { useEffect, useRef, useState } from "react";
-import type { StabEvent } from "@/lib/types";
+import { useEffect, useState } from "react";
+import { STAB_LOG_ROWS } from "@/lib/config";
 import { useGameStore } from "@/game/store";
 import { feedLine, flagEmoji } from "./feedText";
 import "./stabnotice.css";
 
-const LIFE_MS = 3800;
-const MAX_SHOWN = 3;
-
-interface Notice {
-  id: string;
-  flag: string;
-  text: string;
-  hole: number;
-  win: boolean;
-  mine: boolean;
+/** どのくらい前か。時計がずれて未来になっても「いま」に丸める */
+function agoLabel(at: string, now: number): string {
+  const ms = now - Date.parse(at);
+  if (!Number.isFinite(ms)) return "";
+  if (ms < 8000) return "いま";
+  const sec = Math.floor(ms / 1000);
+  if (sec < 60) return `${sec}びょう前`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}ふん前`;
+  const hour = Math.floor(min / 60);
+  if (hour < 24) return `${hour}じかん前`;
+  return `${Math.floor(hour / 24)}にち前`;
 }
-
-const keyOf = (e: StabEvent) => `${e.at}-${e.holeId}`;
 
 export default function StabNotice() {
   const recent = useGameStore((s) => s.recent);
+  const myStabs = useGameStore((s) => s.myStabs);
+  const remoteStabs = useGameStore((s) => s.remoteStabs);
   const phase = useGameStore((s) => s.phase);
-  const [items, setItems] = useState<Notice[]>([]);
-  const seen = useRef<Set<string> | null>(null);
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
+  // 「○びょう前」を進めるための時計。数行だけの軽い再描画
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const t = timers;
-    return () => {
-      t.current.forEach(clearTimeout);
-      t.current = [];
-    };
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
   }, []);
-
-  useEffect(() => {
-    // 最初のポーリングで届く12件は「さっきまでの分」なので通知しない。
-    // ここで一気に3件出すと、開いた瞬間に通知が降ってきて驚かせてしまう
-    if (seen.current === null) {
-      seen.current = new Set(recent.map(keyOf));
-      return;
-    }
-    const fresh = recent.filter((e) => !seen.current!.has(keyOf(e)));
-    if (fresh.length === 0) return;
-    for (const e of fresh) seen.current.add(keyOf(e));
-
-    const myStabs = useGameStore.getState().myStabs;
-    const added: Notice[] = fresh.slice(0, MAX_SHOWN).map((e) => {
-      const mine = !e.win && myStabs.includes(e.holeId);
-      return {
-        id: keyOf(e),
-        flag: flagEmoji(e.country),
-        text: feedLine(e, mine, false),
-        hole: e.holeId,
-        win: e.win,
-        mine,
-      };
-    });
-    setItems((v) => [...added, ...v].slice(0, MAX_SHOWN));
-    for (const n of added) {
-      timers.current.push(
-        setTimeout(
-          () => setItems((v) => v.filter((x) => x.id !== n.id)),
-          LIFE_MS
-        )
-      );
-    }
-  }, [recent]);
 
   // カットシーン中は出さない(主役の邪魔をしない)
   const on = phase === "idle" || phase === "confirming";
-  if (!on || items.length === 0) return null;
+  if (!on || recent.length === 0) return null;
 
   return (
-    <div className="stabnotice" aria-hidden="true">
-      {items.map((n) => (
-        <div
-          key={n.id}
-          className={
-            "stabnotice-row" +
-            (n.win ? " is-win" : n.mine ? " is-mine" : "")
-          }
-        >
-          <span className="stabnotice-flag">{n.flag}</span>
-          <span className="stabnotice-text">{n.text}</span>
-          <span className="stabnotice-hole">#{n.hole}</span>
-        </div>
-      ))}
+    <div
+      className="stabnotice"
+      aria-hidden="true"
+      style={{ ["--stab-rows" as string]: STAB_LOG_ROWS }}
+    >
+      <div className="stabnotice-head">
+        <span className="stabnotice-dot" />
+        <span>月の ようす</span>
+      </div>
+      <div className="stabnotice-list">
+        {recent.map((e) => {
+          const mine = !e.win && myStabs.includes(e.holeId);
+          const falling =
+            !e.win && remoteStabs.some((r) => r.holeId === e.holeId);
+          return (
+            <div
+              key={`${e.at}-${e.holeId}`}
+              className={
+                "stabnotice-row" +
+                (e.win ? " is-win" : mine ? " is-mine" : "") +
+                (falling ? " is-live" : "")
+              }
+            >
+              <span className="stabnotice-flag">{flagEmoji(e.country)}</span>
+              <span className="stabnotice-text">
+                {feedLine(e, mine, falling)}
+              </span>
+              <span className="stabnotice-hole">#{e.holeId}</span>
+              <span className="stabnotice-ago">{agoLabel(e.at, now)}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

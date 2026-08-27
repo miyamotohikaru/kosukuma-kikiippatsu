@@ -30,6 +30,7 @@ import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import {
   MOON_RADIUS,
+  POKE_CHARM_NEED,
   T_LAUNCH,
   T_NEW_ROUND,
   T_SAFE,
@@ -40,6 +41,7 @@ import { useGameStore, type Phase } from "@/game/store";
 import { emitGameEvent } from "@/game/events";
 import { kosukumaWorldPos } from "./sharedRefs";
 import { clamp01 } from "./effects/easing";
+import { makeCircleTexture } from "./effects/textures";
 import {
   prefersReducedMotion,
   TAP_MAX_MS,
@@ -140,6 +142,61 @@ function canPoke(phase: Phase): boolean {
     phase !== "launch" &&
     phase !== "name-entry" &&
     phase !== "trophy"
+  );
+}
+
+/**
+ * つつくほど強くなる、こすくまくんのまわりの光。
+ *
+ * 1万回は遠いので、数字(TapPop の「あと ○」)だけでは追いかけるものが無い。
+ * 半分を過ぎたあたりからうっすら光りはじめ、近づくほど明るく・速く脈打つ。
+ * **こすくまくん自身が「何か起きそう」に見える**のがねらい。
+ * 手に入れたあとは消える(見せる用が済んでいるので)。
+ */
+function PokeAura() {
+  const pokeCount = useGameStore((s) => s.pokeCount);
+  const hasPokeCharm = useGameStore((s) => s.hasPokeCharm);
+  const matRef = useRef<THREE.SpriteMaterial>(null);
+  const spriteRef = useRef<THREE.Sprite>(null);
+  const texture = useMemo(() => makeCircleTexture(), []);
+  useEffect(() => () => texture.dispose(), [texture]);
+
+  // 0..1。半分を過ぎてからを 0..1 に伸ばすので、それまでは何も出ない
+  const heat = clamp01((pokeCount / POKE_CHARM_NEED - 0.5) / 0.5);
+
+  useFrame((state) => {
+    const m = matRef.current;
+    const sp = spriteRef.current;
+    if (!m || !sp) return;
+    // 近づくほど速く脈打つ(1.6Hz → 5.4Hz)
+    const speed = 1.6 + heat * 3.8;
+    const pulse = 0.5 + 0.5 * Math.sin(state.clock.elapsedTime * speed);
+    m.opacity = heat * (0.16 + 0.3 * pulse);
+    const k = 2.9 + heat * 0.7 + pulse * 0.18 * heat;
+    sp.scale.set(k, k, k);
+  });
+
+  if (hasPokeCharm || heat <= 0) return null;
+
+  return (
+    <sprite
+      ref={spriteRef}
+      position={[0, 0.55, 0]}
+      scale={[2.9, 2.9, 2.9]}
+      raycast={() => undefined}
+    >
+      <spriteMaterial
+        ref={matRef}
+        map={texture}
+        /* 近いほど白熱していく(クリーム → 白) */
+        color={heat > 0.75 ? "#fffdf0" : "#ffe9a8"}
+        transparent
+        opacity={0}
+        blending={THREE.AdditiveBlending}
+        depthWrite={false}
+        toneMapped={false}
+      />
+    </sprite>
   );
 }
 
@@ -600,6 +657,7 @@ export default function Kosukuma() {
     >
       <group ref={animRef}>
         <primitive object={scene} scale={SCALE} />
+        <PokeAura />
         {/* つつく当たり判定。揺れに追従させたいので anim の中に置く。
             見えないが、指には少し大きめ(遠景でも狙える) */}
         <mesh

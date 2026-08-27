@@ -404,17 +404,23 @@ export function getTrophyParams(roundNo: number, name: string): TrophyParams {
     baseHeight + cupHeight + topperScale * (cupStyle === "rocket" ? 0.62 : 0.45);
 
   // ── 素材 ──
-  const mRoll = rng();
+  // 系統は**代の順に回す**。乱数で選んでいたときは、となり同士が同じ金属に
+  // なることがあり(第2代と第3代がどちらも銅)、別のトロフィーなのに
+  // 同じものが並んでいるように見えていた。5系統を順に回せば、
+  // となり合う代が同じ系統になることは起きない。
+  // 並びの起点は第1代=ぎん(いままでの第1代と同じ見た目を保つため)。
+  const FAMILY: readonly MaterialKind[] = [
+    "silver",
+    "gold",
+    "aurora",
+    "bronze",
+    "nebula",
+  ];
+  // 素材に乱数を使わなくなったが、ここで消費をやめると以降の乱数の並びが
+  // ずれて、既存のトロフィーの**形**まで変わってしまう。1つ捨てておく
+  rng();
   let kind: MaterialKind =
-    mRoll < 0.3
-      ? "gold"
-      : mRoll < 0.55
-        ? "silver"
-        : mRoll < 0.8
-          ? "bronze"
-          : mRoll < 0.9
-            ? "aurora"
-            : "nebula";
+    FAMILY[((roundNo - 1) % FAMILY.length + FAMILY.length) % FAMILY.length];
   if (rareNebula) kind = "nebula";
   if (rareRainbow || superRare) kind = "aurora";
   const material = buildMaterial(kind, rng);

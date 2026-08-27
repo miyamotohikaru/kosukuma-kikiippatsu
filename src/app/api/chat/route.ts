@@ -7,6 +7,7 @@
 
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+import { CHAT_PAGE } from "@/lib/config";
 import type { ChatResult } from "@/lib/types";
 import { getStore } from "@/server/store";
 import { sanitizeChat, sanitizeName } from "@/server/names";
@@ -21,6 +22,31 @@ const IP_SALT = process.env.IP_HASH_SALT ?? "kk-kikiippatsu-moon-v1";
 
 function json(body: ChatResult, status = 200): NextResponse {
   return NextResponse.json(body, { status, headers: NO_STORE });
+}
+
+/**
+ * GET /api/chat?before=<id> — それより古いコメントを新しい順に返す。
+ * 「ぜんぶ みる」でさかのぼるためのページング。
+ * 現在ぶんは /api/state が配っているので、ここは過去だけを受け持つ。
+ */
+export async function GET(req: Request): Promise<NextResponse> {
+  try {
+    const url = new URL(req.url);
+    const raw = Number(url.searchParams.get("before"));
+    // before が無い/不正なら「いちばん新しいところから」= 上限なし
+    const before =
+      Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : Number.MAX_SAFE_INTEGER;
+    const items = await getStore().chatBefore(before, CHAT_PAGE);
+    return NextResponse.json(
+      { items, hasMore: items.length === CHAT_PAGE },
+      { headers: { "Cache-Control": "public, s-maxage=10" } },
+    );
+  } catch {
+    return NextResponse.json(
+      { items: [], hasMore: false },
+      { status: 500, headers: NO_STORE },
+    );
+  }
 }
 
 export async function POST(req: Request): Promise<NextResponse> {

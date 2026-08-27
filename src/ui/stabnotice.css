@@ -1,40 +1,80 @@
-/* 右上の通知。上の アイコン列(トロフィー・音・？・シェア)の下に積む。
-   HUDの膜は pointer-events:none。ここは読むだけなので触らせない。 */
+/* 右上の「月の ようす」。上のアイコン列(トロフィー・音・じまん・？)の下に置く。
+   左下のコメント欄と同じ読み方だが、こちらは眺めるだけなので触らせない
+   (pointer-events:none のまま = 後ろの月をそのまま回せる)。 */
 .stabnotice {
   position: absolute;
-  top: calc(12px + env(safe-area-inset-top) + 46px);
+  top: calc(12px + env(safe-area-inset-top) + 50px);
   right: calc(12px + env(safe-area-inset-right));
   z-index: 13;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 5px;
-  max-width: min(62vw, 260px);
+  gap: 4px;
+  width: min(64vw, 250px);
+  padding: 6px 8px 7px;
+  border-radius: 14px;
+  background: linear-gradient(
+    180deg,
+    rgba(5, 7, 26, 0.32),
+    rgba(5, 7, 26, 0.46)
+  );
+  border: 1px solid rgba(255, 254, 242, 0.1);
   pointer-events: none;
+}
+
+.stabnotice-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: rgba(255, 254, 242, 0.55);
+  text-shadow: 0 1px 4px rgba(5, 7, 26, 0.9);
+}
+.stabnotice-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #7ce38b;
+  box-shadow: 0 0 6px rgba(124, 227, 139, 0.9);
+  animation: feed-pulse 2.4s ease-in-out infinite;
+}
+
+.stabnotice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  /* 見えるのは --stab-rows 行ぶん。あふれたぶんは静かに切る
+     (触れない窓なので、スクロールバーは出さない) */
+  max-height: calc(var(--stab-rows, 6) * 25px);
+  overflow: hidden;
 }
 
 .stabnotice-row {
   display: flex;
   align-items: center;
   gap: 6px;
-  max-width: 100%;
-  padding: 6px 10px;
+  padding: 4px 9px 4px 7px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   line-height: 1;
-  color: #fffdf4;
-  background: rgba(14, 18, 40, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow: 0 4px 12px rgba(4, 6, 18, 0.42);
-  backdrop-filter: blur(6px);
+  color: rgba(255, 254, 242, 0.86);
+  background: rgba(5, 7, 26, 0.5);
+  border: 1px solid transparent;
   animation: stabnotice-in 0.26s var(--spring, cubic-bezier(0.34, 1.56, 0.64, 1))
     both;
 }
 
-/* 自分の刺しは剣の色、当たりは金。どれが自分の行かは色だけで分かればいい */
+/* 自分の刺しは剣の色、当たりは金、いま降ってきている最中は白く光らせる */
 .stabnotice-row.is-mine {
-  border-color: rgba(255, 217, 61, 0.5);
+  border-color: rgba(255, 217, 61, 0.42);
+  color: #ffe071;
+}
+.stabnotice-row.is-live {
+  border-color: rgba(255, 255, 255, 0.45);
+  color: #fffef2;
 }
 .stabnotice-row.is-win {
   color: #241c00;
@@ -44,7 +84,7 @@
 
 .stabnotice-flag {
   flex: 0 0 auto;
-  font-size: 13px;
+  font-size: 12px;
 }
 .stabnotice-text {
   flex: 1 1 auto;
@@ -53,18 +93,19 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.stabnotice-hole {
+.stabnotice-hole,
+.stabnotice-ago {
   flex: 0 0 auto;
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 800;
-  opacity: 0.6;
+  opacity: 0.62;
   font-variant-numeric: tabular-nums;
 }
 
 @keyframes stabnotice-in {
   from {
     opacity: 0;
-    transform: translateX(16px);
+    transform: translateX(14px);
   }
   to {
     opacity: 1;
@@ -75,5 +116,15 @@
 @media (prefers-reduced-motion: reduce) {
   .stabnotice-row {
     animation: none;
+  }
+  .stabnotice-dot {
+    animation: none;
+  }
+}
+
+/* せまい画面では上のアイコンが40pxになるので、その下に詰める */
+@media (max-width: 430px) {
+  .stabnotice {
+    top: calc(12px + env(safe-area-inset-top) + 46px);
   }
 }

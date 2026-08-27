@@ -32,8 +32,24 @@ export const CHAT_BURST_PER_MIN = 12;
 
 /** サーバーが返す直近のコメント数 */
 export const CHAT_FETCH = 30;
-/** 左下のチャットに出す行数(コメントだけ。新しいものが下) */
-export const FEED_ROWS = 6;
+
+/**
+ * 運営として出したコメントの id。
+ * 個人の名前ではなく「うんえい」として、おしらせの見た目で出す。
+ * (書いた本人の名前が入ったままだと、ただの1コメントに見えてしまう)
+ */
+export const OPERATOR_CHAT_IDS: readonly number[] = [1, 13];
+
+/** 「ぜんぶ みる」で1回にさかのぼる件数 */
+export const CHAT_PAGE = 50;
+/** 右上の「だれが刺したか」の記録で、一度に見える行数 */
+export const STAB_LOG_ROWS = 6;
+
+/**
+ * 左下のチャットで、一度に見える行数(コメントだけ・新しいものが下)。
+ * 中身はもっと入っていて、指でさかのぼれる。ここは「箱の高さ」の指定。
+ */
+export const FEED_ROWS = 4;
 
 // ── 演出タイミング (ms) ──────────────────────────────
 export const T_STAB = 1100; // 剣を構えて刺すまで

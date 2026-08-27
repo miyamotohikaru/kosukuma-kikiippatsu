@@ -34,6 +34,8 @@ export interface ChatMessage {
   body: string;
   /** ISO8601 */
   at: string;
+  /** true = 運営からのおしらせ。人の名前は出さない */
+  operator?: boolean;
 }
 
 /** GET /api/state のレスポンス */

@@ -13,6 +13,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
+import { OrbitControls } from "@react-three/drei";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { TrophiesResponse, TrophyRecord } from "@/lib/types";
 import { mulberry32, pick, randInt } from "@/lib/prng";
@@ -40,8 +42,14 @@ interface StandSpot {
   top: number;
 }
 
-/** 画面のアスペクト比から、横にならべる数を決める */
-function colsForAspect(aspect: number): number {
+/**
+ * 画面のアスペクト比から、横にならべる数を決める。
+ * ただし**3体までは、せまい画面でも必ず横一列**にする。
+ * 2列にすると3体目だけが奥へ下がって小さくなり、「3人しかいないのに2段」で
+ * 寂しく見えていた(いまは指で寄れるので、小さく出ても追いかけられる)。
+ */
+function colsForAspect(aspect: number, count: number): number {
+  if (count > 0 && count <= 3) return count;
   if (aspect >= 1.25) return 4; // PC・タブレット横
   if (aspect >= 0.82) return 3; // ほぼ正方形
   return 2; // スマホ縦
@@ -646,18 +654,28 @@ function TrophyStand({ item, spot, selected, onPick }: StandProps) {
   );
 }
 
-/** 選択に合わせてゆったり寄る/戻るカメラ */
+/**
+ * 選択に合わせてゆったり寄る/戻るカメラ。
+ * **指で動かしはじめたら、こちらは手を引く。** 自動で戻し続けると、
+ * 回そうとしても押し返されて「動かせない」と感じてしまう。
+ * 手を戻すのは、別のトロフィーを選んだときと「いちからみる」を押したとき。
+ */
 function HallCamera({
   home,
   focus,
+  controls,
+  manual,
 }: {
   home: HallHome;
   focus: StandSpot | null;
+  controls: React.RefObject<OrbitControlsImpl | null>;
+  manual: React.RefObject<boolean>;
 }) {
   const tmpPos = useMemo(() => new THREE.Vector3(), []);
   const tmpTgt = useMemo(() => new THREE.Vector3(), []);
   const curTgt = useRef(new THREE.Vector3(0, home.targetY, home.targetZ));
   useFrame(({ camera, clock }, dt) => {
+    if (manual.current) return; // 指で動かしている間は OrbitControls にまかせる
     const t = clock.getElapsedTime();
     if (focus) {
       // せまい画面は少し引き、被写体が画面の上半分にくるよう下を狙う
@@ -675,7 +693,15 @@ function HallCamera({
     const k = 1 - Math.exp(-3 * Math.min(dt, 0.1));
     camera.position.lerp(tmpPos, k);
     curTgt.current.lerp(tmpTgt, k);
-    camera.lookAt(curTgt.current);
+    // 注視点は OrbitControls と共有する。ここでズラしておかないと、
+    // 指で動かしはじめた瞬間に画がガクッと飛ぶ
+    const c = controls.current;
+    if (c) {
+      c.target.copy(curTgt.current);
+      c.update();
+    } else {
+      camera.lookAt(curTgt.current);
+    }
   });
   return null;
 }
@@ -794,7 +820,7 @@ export default function TrophyHall() {
   const perPage = view?.perPage ?? PER_PAGE;
   const maxPage = Math.max(1, Math.ceil(total / perPage));
 
-  const cols = colsForAspect(aspect);
+  const cols = colsForAspect(aspect, items.length);
   const spots = useMemo(
     () => layoutStands(items.length, cols),
     [items.length, cols]
@@ -805,6 +831,17 @@ export default function TrophyHall() {
     selected !== null ? items[selected] : undefined;
   const focus = selected !== null && sel ? (spots[selected] ?? null) : null;
   const selRare = sel ? getTrophyParams(sel.roundNo, sel.name).rare : false;
+
+  // 指で動かしたかどうか。動かしたら自動カメラは手を引く
+  const controls = useRef<OrbitControlsImpl | null>(null);
+  const manual = useRef(false);
+  const resetView = () => {
+    manual.current = false;
+  };
+  // 別のトロフィーを選び直したら、自動カメラに戻す(選んだのに寄らないと変)
+  useEffect(() => {
+    manual.current = false;
+  }, [selected, page]);
 
   const goPage = (p: number) => {
     if (p < 1 || p > maxPage) return;
@@ -823,7 +860,10 @@ export default function TrophyHall() {
             near: 0.1,
             far: 90,
           }}
-          onPointerMissed={() => setSelected(null)}
+          onPointerMissed={() => {
+            setSelected(null);
+            resetView();
+          }}
         >
           <color attach="background" args={["#05071a"]} />
           <fog attach="fog" args={["#05071a", 12, 40]} />
@@ -849,7 +889,31 @@ export default function TrophyHall() {
               />
             );
           })}
-          <HallCamera home={home} focus={focus} />
+          <HallCamera
+            home={home}
+            focus={focus}
+            controls={controls}
+            manual={manual}
+          />
+          {/* 指で まわす・寄る。宇宙の月と同じ手ざわりにそろえる。
+              平行移動は切る(横へ流れると、二度と戻れなくなる) */}
+          <OrbitControls
+            ref={controls}
+            makeDefault
+            enablePan={false}
+            enableDamping
+            dampingFactor={0.09}
+            rotateSpeed={0.7}
+            zoomSpeed={0.8}
+            minDistance={0.9}
+            maxDistance={home.camZ + 8}
+            /* 床下へ潜らせない・真上から見下ろさせない */
+            minPolarAngle={0.12}
+            maxPolarAngle={Math.PI * 0.495}
+            onStart={() => {
+              manual.current = true;
+            }}
+          />
         </Canvas>
       </div>
 
@@ -954,6 +1018,19 @@ export default function TrophyHall() {
           <span className="th-page-no">
             {page} / {maxPage}
           </span>
+          {/* 指でまわして迷子になったときの帰り道。
+              いつでも出しておく(困ってから探すものなので、隠さない) */}
+          <button
+            type="button"
+            className="th-btn th-btn-reset"
+            onClick={() => {
+              setSelected(null);
+              resetView();
+            }}
+            aria-label="ぜんたいを みる"
+          >
+            ⤢
+          </button>
           <button
             type="button"
             className="th-btn"

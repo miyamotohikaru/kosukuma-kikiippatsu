@@ -1,6 +1,6 @@
 /* つかまえたときの「あと ○」。3Dの操作は絶対に邪魔しない */
 
-.skypop-layer {
+.tappop-layer {
   position: absolute;
   inset: 0;
   z-index: 12;
@@ -8,7 +8,7 @@
   overflow: hidden;
 }
 
-.skypop {
+.tappop {
   position: absolute;
   transform: translate(-50%, -50%);
   padding: 5px 12px;
@@ -23,10 +23,10 @@
   white-space: nowrap;
   text-shadow: 0 1px 6px rgba(6, 8, 18, 0.9);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
-  animation: skypop-rise 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: tappop-rise 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-@keyframes skypop-rise {
+@keyframes tappop-rise {
   0% {
     opacity: 0;
     transform: translate(-50%, -50%) scale(0.7);
@@ -49,10 +49,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .skypop {
-    animation: skypop-fade 1.15s ease both;
+  .tappop {
+    animation: tappop-fade 1.15s ease both;
   }
-  @keyframes skypop-fade {
+  @keyframes tappop-fade {
     0% {
       opacity: 0;
     }
@@ -63,5 +63,35 @@
     100% {
       opacity: 0;
     }
+  }
+}
+
+/* あと少しのとき。数字が赤くふくらんで、指の下で脈打つ */
+.tappop.is-hot {
+  font-size: 19px;
+  color: #fff2f0;
+  background: linear-gradient(180deg, #ff7a5f, #e8402f);
+  border-color: rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 0 14px rgba(232, 64, 47, 0.75),
+    0 3px 10px rgba(6, 8, 18, 0.5);
+  animation:
+    tappop-rise 1.15s cubic-bezier(0.22, 0.9, 0.3, 1) both,
+    tappop-throb 0.36s ease-in-out 2;
+}
+
+@keyframes tappop-throb {
+  0%,
+  100% {
+    letter-spacing: 0;
+  }
+  50% {
+    letter-spacing: 0.08em;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tappop.is-hot {
+    animation: tappop-fade 0.9s ease both;
   }
 }

@@ -8,7 +8,7 @@
 // 並びはYouTubeのライブと同じで**新しいものが下**。いちばん下が入力欄なので、
 // 書いた自分のコメントがそのすぐ上に出てくる = 送れたことがその場で分かる。
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { CHAT_MAX_LEN, FEED_ROWS } from "@/lib/config";
 import { useGameStore } from "@/game/store";
 import { flagEmoji } from "./feedText";
@@ -56,8 +56,24 @@ export default function Feed({ onOpenLog }: FeedProps) {
   const composing = useRef(false);
   useKeyboardLift(focused);
 
-  // store は新しい順に持っている。表示は「新しいものが下」なのでひっくり返す
-  const rows = chat.slice(0, FEED_ROWS).reverse();
+  // store は新しい順に持っている。表示は「新しいものが下」なのでひっくり返す。
+  // **見えるのは FEED_ROWS 行ぶんだけで、中身は全部入っている**(指でさかのぼれる)
+  const rows = [...chat].reverse();
+
+  // ── いちばん下に貼りつく ──
+  // 新しいコメントが来たら下へ送る。ただし**さかのぼって読んでいる最中は
+  // 動かさない**(読んでいる途中で勝手に飛ばされるのがいちばん困る)。
+  const listRef = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+  const onScroll = () => {
+    const el = listRef.current;
+    if (!el) return;
+    stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+  };
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    if (el && stick.current) el.scrollTop = el.scrollHeight;
+  }, [rows.length]);
 
   const submit = async () => {
     if (composing.current) return; // 変換中のEnterは確定であって送信ではない
@@ -76,18 +92,31 @@ export default function Feed({ onOpenLog }: FeedProps) {
         </button>
       </div>
 
-      <div className="feed" aria-live="polite">
+      <div
+        className="feed"
+        aria-live="polite"
+        ref={listRef}
+        onScroll={onScroll}
+        style={{ ["--feed-rows" as string]: FEED_ROWS }}
+      >
         {rows.length === 0 ? (
           <p className="feed-empty">
             まだ 何も ないよ。さいしょの コメントを かいてみて！
           </p>
         ) : (
           rows.map((m) => (
-            <div key={m.id} className="feed-row feed-chat">
+            <div
+              key={m.id}
+              className={
+                m.operator ? "feed-row feed-chat is-op" : "feed-row feed-chat"
+              }
+            >
               <span className="feed-flag" aria-hidden="true">
-                {flagEmoji(m.country)}
+                {m.operator ? "📣" : flagEmoji(m.country)}
               </span>
-              <span className="feed-name">{m.name ?? "だれか"}</span>
+              <span className="feed-name">
+                {m.operator ? "うんえい" : (m.name ?? "だれか")}
+              </span>
               <span className="feed-body">{m.body}</span>
             </div>
           ))

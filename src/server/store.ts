@@ -11,6 +11,7 @@ import {
   CHAT_BURST_PER_MIN,
   CHAT_COOLDOWN_SEC,
   CHAT_FETCH,
+  OPERATOR_CHAT_IDS,
   COOLDOWN_SEC,
   HOLE_COUNT,
   SWORD_COLORS,
@@ -90,6 +91,8 @@ export interface IGameStore {
   getTrophies(page: number, perPage: number): Promise<TrophyPage>;
   /** コメントを1件書き込む(検閲は呼び出し側で済ませてある) */
   postChat(input: ChatInput): Promise<ChatOutcome>;
+  /** beforeId より古いコメントを新しい順に(「ぜんぶ みる」で さかのぼる用) */
+  chatBefore(beforeId: number, limit: number): Promise<ChatMessage[]>;
 }
 
 // ── 共通ヘルパ ───────────────────────────────────────
@@ -111,6 +114,31 @@ const toMs = (v: string | Date): number =>
 function remainingCooldownSec(lastAtMs: number): number {
   const remaining = COOLDOWN_SEC - (Date.now() - lastAtMs) / 1000;
   return remaining > 0 ? Math.ceil(remaining) : 0;
+}
+
+/**
+ * DBの行を ChatMessage へ。運営として出したものは、書いた人の名前を出さずに
+ * 「おしらせ」として返す(表示側はこのフラグだけ見ればいい)。
+ */
+function applyOperator(m: ChatMessage): ChatMessage {
+  if (!OPERATOR_CHAT_IDS.includes(m.id)) return m;
+  return { ...m, name: null, country: null, operator: true };
+}
+
+function toChatMessage(r: {
+  id: string | number;
+  name: string | null;
+  country: string | null;
+  body: string;
+  created_at: string | Date;
+}): ChatMessage {
+  return applyOperator({
+    id: Number(r.id),
+    name: r.name,
+    country: r.country,
+    body: r.body,
+    at: toIso(r.created_at),
+  });
 }
 
 /** 最終コメント時刻(epoch ms)から連投の残り秒 */
@@ -349,13 +377,7 @@ class PostgresStore implements IGameStore {
       created_at: string | Date;
     }[];
     // BIGSERIAL は文字列で返ることがある。id は並び順と重複排除の鍵なので必ず数値へ
-    return rows.map((r) => ({
-      id: Number(r.id),
-      name: r.name,
-      country: r.country,
-      body: r.body,
-      at: toIso(r.created_at),
-    }));
+    return rows.map(toChatMessage);
   }
 
   /** 指定ラウンドの勝者情報。未決着・存在しないなら null */
@@ -553,6 +575,22 @@ class PostgresStore implements IGameStore {
         at: toIso(r.created_at),
       },
     };
+  }
+
+  async chatBefore(beforeId: number, limit: number): Promise<ChatMessage[]> {
+    await this.ensureSchema();
+    const rows = (await this.sql`
+      SELECT id, name, country, body, created_at FROM kk_chat
+      WHERE id < ${beforeId}
+      ORDER BY id DESC LIMIT ${limit}
+    `) as {
+      id: string | number;
+      name: string | null;
+      country: string | null;
+      body: string;
+      created_at: string | Date;
+    }[];
+    return rows.map(toChatMessage);
   }
 
   async claim(roundNo: number, token: string, name: string): Promise<ClaimOutcome> {
@@ -779,7 +817,7 @@ class MemoryStore implements IGameStore {
       stabCharms: this.charmsOf(active.roundNo),
       recent,
       prevWinner: prev ? memWinnerInfo(prev) : null,
-      chat: this.data.chat.slice(0, CHAT_FETCH),
+      chat: this.data.chat.slice(0, CHAT_FETCH).map(applyOperator),
     };
   }
 
@@ -867,6 +905,13 @@ class MemoryStore implements IGameStore {
     this.data.chatByFp.set(input.fp, now);
     this.data.chatByIp.set(input.ipHash, [...burst, now]);
     return { kind: "ok", message };
+  }
+
+  async chatBefore(beforeId: number, limit: number): Promise<ChatMessage[]> {
+    return this.data.chat
+      .filter((m) => m.id < beforeId)
+      .slice(0, limit)
+      .map(applyOperator);
   }
 
   async claim(roundNo: number, token: string, name: string): Promise<ClaimOutcome> {

@@ -7,7 +7,7 @@
 // live欄とちがって、こちらは**新しいものが上**にする。
 // 開いた瞬間にいちばん新しいコメントが目に入るほうが、遡る動きに合う。
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useGameStore } from "@/game/store";
 import { flagEmoji } from "./feedText";
 import "./ui.css";
@@ -19,6 +19,23 @@ interface FeedLogProps {
 
 export default function FeedLog({ open, onClose }: FeedLogProps) {
   const chat = useGameStore((s) => s.chat);
+  const hasMore = useGameStore((s) => s.chatHasMore);
+  const loading = useGameStore((s) => s.chatLoadingOlder);
+  const loadOlder = useGameStore((s) => s.loadOlderChat);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  // 開いたら、手元にあるぶんの先を1ページだけ先に取っておく。
+  // 「ぜんぶ みる」と言われて30件で止まっていたら、ぜんぶではない
+  useEffect(() => {
+    if (open) void loadOlder();
+  }, [open, loadOlder]);
+
+  // 下まで来たら続きを取る(ボタンも残してあるので、届かなくても詰まらない)
+  const onScroll = () => {
+    const el = bodyRef.current;
+    if (!el) return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) void loadOlder();
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -53,7 +70,7 @@ export default function FeedLog({ open, onClose }: FeedLogProps) {
           </button>
         </div>
 
-        <div className="kk-drawer-body">
+        <div className="kk-drawer-body" ref={bodyRef} onScroll={onScroll}>
           {chat.length === 0 ? (
             <p className="feedlog-empty">
               まだ 何も ないよ。
@@ -64,11 +81,20 @@ export default function FeedLog({ open, onClose }: FeedLogProps) {
             <>
               <ol className="feedlog-list">
                 {chat.map((m) => (
-                  <li key={m.id} className="feedlog-row is-chat">
+                  <li
+                    key={m.id}
+                    className={
+                      m.operator
+                        ? "feedlog-row is-chat is-op"
+                        : "feedlog-row is-chat"
+                    }
+                  >
                     <span className="feed-flag" aria-hidden="true">
-                      {flagEmoji(m.country)}
+                      {m.operator ? "📣" : flagEmoji(m.country)}
                     </span>
-                    <span className="feed-name">{m.name ?? "だれか"}</span>
+                    <span className="feed-name">
+                      {m.operator ? "うんえい" : (m.name ?? "だれか")}
+                    </span>
                     <span className="feed-body">{m.body}</span>
                     <span className="feed-time">
                       {new Date(m.at).toLocaleTimeString("ja-JP", {
@@ -79,10 +105,21 @@ export default function FeedLog({ open, onClose }: FeedLogProps) {
                   </li>
                 ))}
               </ol>
-              <p className="feedlog-note">
-                新しい方から さかのぼれるよ。
-                だれが 刺したかは、右上に 出るよ。
-              </p>
+              {hasMore ? (
+                <button
+                  type="button"
+                  className="feedlog-more"
+                  disabled={loading}
+                  onClick={() => void loadOlder()}
+                >
+                  {loading ? "よみこみちゅう…" : "もっと まえを みる"}
+                </button>
+              ) : (
+                <p className="feedlog-note">
+                  ここが いちばん さいしょの コメントだよ。
+                  だれが 刺したかは、右上に 出るよ。
+                </p>
+              )}
             </>
           )}
         </div>

@@ -254,6 +254,27 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  /* 見えるのは --feed-rows 行ぶん。中身はもっと入っていて、指でさかのぼれる。
+     1行の高さ(26px)+ すきま(4px)で見当をつける。2行に折り返したコメントが
+     あるぶんは、そのぶん行数が減って見えるだけで壊れない */
+  max-height: calc(var(--feed-rows, 4) * 30px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* ここを触れるようにしないと、指のドラッグが後ろの月へ抜けて回ってしまう */
+  pointer-events: auto;
+  touch-action: pan-y;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 254, 242, 0.28) transparent;
+}
+.feed::-webkit-scrollbar {
+  width: 4px;
+}
+.feed::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 254, 242, 0.28);
+}
+.feed::-webkit-scrollbar-track {
+  background: transparent;
 }
 .feed-row {
   display: flex;
@@ -270,21 +291,8 @@
   color: rgba(255, 254, 242, 0.88);
   animation: feed-in 0.35s var(--spring) both;
 }
-/* いちばん下が最新(YouTubeのライブと同じ向き)。上へ行くほど薄くする。
-   nth-last-child で数えるのは、行数が5に満たないときも
-   「いちばん下が濃い」を守るため */
-.feed-row:nth-last-child(2) {
-  opacity: 0.9;
-}
-.feed-row:nth-last-child(3) {
-  opacity: 0.8;
-}
-.feed-row:nth-last-child(4) {
-  opacity: 0.7;
-}
-.feed-row:nth-last-child(n + 5) {
-  opacity: 0.6;
-}
+/* さかのぼって読める箱になったので、古い行を薄くするのはやめた。
+   薄くしたままだと、スクロールして読みにきた先がいちばん薄い = 読めない */
 .feed-flag {
   font-size: 14px;
   line-height: 1;
@@ -3021,4 +3029,45 @@ button.kk-charm-btn:active .kk-charm-cell {
   color: #3a3730;
   text-shadow: none;
   white-space: normal;
+}
+
+/* 「ぜんぶ みる」の続きを取るボタン。下まで来ると自動でも取りにいくが、
+   自動が届かなかったとき(短い一覧・慣性が効かない環境)の逃し口として残す */
+.feedlog-more {
+  margin: 10px auto 4px;
+  padding: 9px 18px;
+  border: 1px solid rgba(43, 38, 32, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #5d564b;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform 0.12s var(--spring);
+}
+.feedlog-more:active {
+  transform: scale(0.95);
+}
+.feedlog-more:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* 運営からのおしらせ。人のコメントと同じ流れに置くが、
+   だれか一人の発言ではないことが一目で分かるように色を変える */
+.feed-row.feed-chat.is-op {
+  background: rgba(245, 129, 31, 0.22);
+  border-color: rgba(245, 129, 31, 0.45);
+}
+.feed-row.feed-chat.is-op .feed-name {
+  color: #ffbd7a;
+}
+.feedlog-row.is-chat.is-op {
+  background: rgba(245, 129, 31, 0.14);
+}
+.feedlog-row.is-chat.is-op .feed-name {
+  color: #b35d0f;
 }

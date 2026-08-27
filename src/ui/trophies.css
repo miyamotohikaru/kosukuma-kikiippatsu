@@ -358,3 +358,11 @@
     }
   }
 }
+
+/* 指でまわして迷子になったときの帰り道。ページ送りのとなりに小さく置く */
+.th-btn-reset {
+  padding: 0;
+  width: 38px;
+  font-size: 15px;
+  line-height: 1;
+}
