@@ -318,6 +318,29 @@ const LS = {
   },
 };
 
+/** この端末がとばした代の一覧(トロフィーホールが読む) */
+export const MY_ROUNDS_KEY = "kk-my-rounds";
+
+export function loadMyRounds(): number[] {
+  try {
+    const raw = LS.get(MY_ROUNDS_KEY);
+    if (!raw) return [];
+    const v = JSON.parse(raw) as unknown;
+    if (!Array.isArray(v)) return [];
+    return v.filter(
+      (x): x is number => typeof x === "number" && Number.isInteger(x) && x > 0,
+    );
+  } catch {
+    return [];
+  }
+}
+
+function rememberMyRound(roundNo: number): void {
+  const cur = loadMyRounds();
+  if (cur.includes(roundNo)) return;
+  LS.set(MY_ROUNDS_KEY, JSON.stringify([...cur, roundNo]));
+}
+
 export function getFingerprint(): string {
   let fp = LS.get("kk-fp");
   if (!fp) {
@@ -1161,6 +1184,9 @@ export const useGameStore = create<GameState>((set, get) => {
             // デモの当たりはリロード復元の対象にしない
             LS.set("kk-claim-token", result.claimToken);
             LS.set("kk-claim-round", String(result.roundNo));
+            // 自分がとばした代。トロフィーホールで「これは自分のだ」と
+            // 分かる唯一の手がかりになる(サーバーは端末を知らない)
+            rememberMyRound(result.roundNo);
             myWonRounds.add(result.roundNo);
             // 当たりも自分の1回として数える(デモは数えない)
             const myTotal = get().myTotal + 1;

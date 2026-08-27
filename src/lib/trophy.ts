@@ -58,12 +58,28 @@ const CUP_STYLES: readonly CupStyle[] = [
   "column",
 ];
 
-// ── すでに世に出た代の姿を守るための、増やす前の並び ──────────────
-// くじは `pick(rng, 配列)` なので、**選択肢を増やすと目が動く**。
-// 第1〜3代はもうトロフィーホールに立っていて、その姿で覚えられているので、
-// この3代だけは増やす前の並びから引く。第4代からは増えたぶんも出る。
-const LEGACY_ROUNDS = 3;
-const CUP_STYLES_LEGACY: readonly CupStyle[] = [
+// ── くじの「版」 ─────────────────────────────────────
+// くじは `pick(rng, 配列)` なので、**選択肢を増やすと目そのものが動く。**
+// つまり形を1つ足しただけで、もう立っているトロフィーまで別の姿になる。
+// トロフィーは永久に刻むものなので、それは起きてはいけない。
+//
+// そこで**代ごとに「どの版のくじを引いたか」を記録しておく**(DBの trophy_v)。
+// 版の中身は**絶対に書き換えない**。あたらしい形や色を足すときは、
+// 新しい版を作って TROPHY_GEN_VERSION を上げるだけ。
+// こうすれば、すでに出たトロフィーは何を足しても変わらない。
+//
+// v1 = 2026-08-27まで(かたち5種・てっぺん7種)
+// v2 = チューリップ/球/柱 と 王冠/輪 を足した版
+interface TrophyWheels {
+  cups: readonly CupStyle[];
+  toppers: readonly TopperKind[];
+  family: readonly MaterialKind[];
+}
+
+/** これから作るトロフィーの版。足したら上げる(既存の版はさわらない) */
+export const TROPHY_GEN_VERSION = 2;
+
+const CUP_STYLES_V1: readonly CupStyle[] = [
   "wine",
   "urn",
   "angular",
@@ -81,7 +97,7 @@ const TOPPERS: readonly TopperKind[] = [
   "crown",
   "ring",
 ];
-const TOPPERS_LEGACY: readonly TopperKind[] = [
+const TOPPERS_V1: readonly TopperKind[] = [
   "star",
   "moon",
   "heart",
@@ -505,7 +521,7 @@ function buildMaterial(
  * (第1代=ぎん / 第2代=きん / 第3代=オーロラ は、もう世に出ている姿)。
  * 12系統あるので、13代で一周する。
  */
-const FAMILY: readonly MaterialKind[] = [
+const FAMILY_V1: readonly MaterialKind[] = [
   "silver", // 第1代
   "gold", // 第2代
   "aurora", // 第3代
@@ -519,6 +535,19 @@ const FAMILY: readonly MaterialKind[] = [
   "pearl",
   "obsidian",
 ];
+
+/**
+ * 版ごとのくじ。**一度出した版の中身は書き換えないこと。**
+ * 書き換えた瞬間、その版で作られたトロフィーの姿が変わってしまう。
+ */
+const WHEELS: Record<number, TrophyWheels> = {
+  1: { cups: CUP_STYLES_V1, toppers: TOPPERS_V1, family: FAMILY_V1 },
+  2: { cups: CUP_STYLES, toppers: TOPPERS, family: FAMILY_V1 },
+};
+
+function wheelsOf(version: number): TrophyWheels {
+  return WHEELS[version] ?? WHEELS[1];
+}
 
 /**
  * 12系統を一周したあと(第13代〜)の振り分け。
@@ -577,9 +606,15 @@ function shiftColor(hex: string, deg: number, light: number): string {
  * roundNo と名前からトロフィーの全パラメータを決定的に生成する。
  * 全高≈TROPHY_HEIGHT(=1)・台座底が y=0。
  */
-export function getTrophyParams(roundNo: number, name: string): TrophyParams {
+export function getTrophyParams(
+  roundNo: number,
+  name: string,
+  /** その代が引いたくじの版。記録が無い(古い代)なら 1 */
+  version = 1,
+): TrophyParams {
   const seed = hashString(`${roundNo}:${name}`);
   const rng = mulberry32(seed);
+  const wheels = wheelsOf(version);
 
   // ── レア判定(rng を消費しない・roundNo/名前だけで決まる) ──
   const superRare = roundNo > 0 && roundNo % 1000 === 0; // 1000の倍数: 超レア
@@ -593,9 +628,7 @@ export function getTrophyParams(roundNo: number, name: string): TrophyParams {
   const widthScale = randRange(rng, 0.85, 1.12);
 
   // ── カップ系統 ──
-  // 第1〜3代はもう立っている姿があるので、増やす前の並びから引く
-  const legacy = roundNo <= LEGACY_ROUNDS;
-  const cupStyle = pick(rng, legacy ? CUP_STYLES_LEGACY : CUP_STYLES);
+  const cupStyle = pick(rng, wheels.cups);
 
   // ── 台座 ──
   const baseShape: BaseShape = rng() < 0.55 ? "round" : "square";
@@ -659,7 +692,7 @@ export function getTrophyParams(roundNo: number, name: string): TrophyParams {
   const handleOffsetX = radiusAtY(profile, handleYLocal) + handleRadius * 0.8;
 
   // ── トッパー ──
-  let topper = pick(rng, legacy ? TOPPERS_LEGACY : TOPPERS);
+  let topper = pick(rng, wheels.toppers);
   if (bearName) topper = "bear"; // 名前に「こすくま」が入っていたらくま確定
   if (superRare) topper = "diamond";
   // ロケット型は上が閉じているので少し高めに載せる
@@ -667,19 +700,20 @@ export function getTrophyParams(roundNo: number, name: string): TrophyParams {
     baseHeight + cupHeight + topperScale * (cupStyle === "rocket" ? 0.62 : 0.45);
 
   // ── 素材 ──
-  // 系統は**代の順に回す**(FAMILY)。乱数で選んでいたときは、となり同士が
+  // 系統は**代の順に回す**(版ごとの family)。乱数で選んでいたときは、となり同士が
   // 同じ金属になることがあり(第2代と第3代がどちらも銅)、別のトロフィーなのに
   // 同じものが並んでいるように見えていた。順に回せば、となり合う代が
   // 同じ系統になることは起きない。
   // 素材に乱数を使わなくなったが、ここで消費をやめると以降の乱数の並びが
   // ずれて、既存のトロフィーの**形**まで変わってしまう。1つ捨てておく
   rng();
+  const family = wheels.family;
   let kind: MaterialKind =
-    FAMILY[((roundNo - 1) % FAMILY.length + FAMILY.length) % FAMILY.length];
+    family[(((roundNo - 1) % family.length) + family.length) % family.length];
   if (rareNebula) kind = "nebula";
   if (rareRainbow || superRare) kind = "aurora";
   // 12系統を一周したら色相を回して、前の周と同じ色にならないようにする
-  const lap = Math.floor(Math.max(0, roundNo - 1) / FAMILY.length);
+  const lap = Math.floor(Math.max(0, roundNo - 1) / family.length);
   const material = buildMaterial(kind, rng, lap);
 
   return {

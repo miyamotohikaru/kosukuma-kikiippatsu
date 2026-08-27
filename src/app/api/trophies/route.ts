@@ -1,5 +1,8 @@
-// GET /api/trophies?page=1&perPage=24 — 歴代勝者(トロフィーホール)の一覧。
+// GET /api/trophies?offset=0&limit=8 — 歴代勝者(トロフィーホール)の一覧。
 // 決着済みラウンドを新しい順に返す。未クレームの勝者は「ななしさん」。
+//
+// offset で切るのは、ホールのページ割りが均等ではないため。
+// 最後のページだけ「第1〜3代」の3体で、それより新しいぶんは8体ずつ並ぶ。
 
 import { NextResponse } from "next/server";
 import type { TrophiesResponse } from "@/lib/types";
@@ -27,11 +30,11 @@ function intParam(
 export async function GET(req: Request): Promise<NextResponse> {
   try {
     const url = new URL(req.url);
-    const page = intParam(url.searchParams.get("page"), 1, 1, 1_000_000);
-    const perPage = intParam(url.searchParams.get("perPage"), 24, 1, 50);
+    const offset = intParam(url.searchParams.get("offset"), 0, 0, 1_000_000);
+    const limit = intParam(url.searchParams.get("limit"), 24, 1, 50);
 
-    const { total, items } = await getStore().getTrophies(page, perPage);
-    const body: TrophiesResponse = { total, page, perPage, items };
+    const { total, items } = await getStore().getTrophies(offset, limit);
+    const body: TrophiesResponse = { total, offset, limit, items };
     return NextResponse.json(body, { headers: HEADERS });
   } catch {
     return NextResponse.json(

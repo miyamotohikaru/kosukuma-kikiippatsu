@@ -100,7 +100,7 @@ export default function GearDrawer({ open, onClose }: GearDrawerProps) {
               <span className="nick-preview nick-row-note">
                 {name.trim()
                   ? `「${name.trim()}が 刺した」と のこるよ`
-                  : "いれると「だれかが」のかわりに 名前がのこるよ"}
+                  : "月の ようす と コメントに この名前でのこるよ"}
               </span>
             </div>
             <SwordPreview />

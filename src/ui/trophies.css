@@ -366,3 +366,36 @@
   font-size: 15px;
   line-height: 1;
 }
+
+/* 最後のページの見出し。第1〜3代だけの「はじまりの3人」。
+   ここだけ別の場所だと分かればいいので、金の細字を1行だけ */
+.th-firstthree {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--accent, #ffd93d);
+  text-shadow: 0 0 12px rgba(255, 217, 61, 0.45);
+  animation: th-firstthree-in 0.5s ease both;
+}
+@keyframes th-firstthree-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 自分がとばしたトロフィーにだけ出る、じまんボタン */
+.th-share {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  background: linear-gradient(180deg, #ffe071, #f5c400);
+  color: #241c00;
+  border-color: rgba(255, 255, 255, 0.6);
+  font-weight: 800;
+}

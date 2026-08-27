@@ -319,8 +319,12 @@ interface BuiltTrophy {
   redrawText: () => void;
 }
 
-function buildTrophy(roundNo: number, name: string): BuiltTrophy {
-  const p = getTrophyParams(roundNo, name);
+function buildTrophy(
+  roundNo: number,
+  name: string,
+  version: number
+): BuiltTrophy {
+  const p = getTrophyParams(roundNo, name, version);
   const geoms: THREE.BufferGeometry[] = [];
   const mats: THREE.Material[] = [];
   const texs: THREE.Texture[] = [];
@@ -471,14 +475,23 @@ function buildTrophy(roundNo: number, name: string): BuiltTrophy {
 export interface TrophyMeshProps {
   roundNo: number;
   name: string;
+  /** くじの版。省略時は 1(記録が無い古い代と同じ姿になる) */
+  version?: number;
 }
 
 /**
  * <TrophyMesh roundNo={n} name={s} /> — <Canvas> 内で使う。
  * 同じ入力なら世界中で同じ形のトロフィーになる。
  */
-export default function TrophyMesh({ roundNo, name }: TrophyMeshProps) {
-  const built = useMemo(() => buildTrophy(roundNo, name), [roundNo, name]);
+export default function TrophyMesh({
+  roundNo,
+  name,
+  version = 1,
+}: TrophyMeshProps) {
+  const built = useMemo(
+    () => buildTrophy(roundNo, name, version),
+    [roundNo, name, version]
+  );
 
   useEffect(() => {
     // Webフォント読み込み完了後にプレートを描き直す(初回は代替フォント)

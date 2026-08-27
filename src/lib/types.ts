@@ -22,6 +22,11 @@ export interface WinnerInfo {
   holeId: number;
   /** そのラウンドで刺された総数 */
   stabCount: number;
+  /**
+   * そのトロフィーが引いたくじの版(src/lib/trophy.ts)。
+   * 記録が無い(古い代)なら 1。**一度出たトロフィーの姿を固定するための印。**
+   */
+  trophyV?: number;
 }
 
 /** チャットの1件。左下に流れ、「ぜんぶ みる」で読み返せる */
@@ -143,12 +148,14 @@ export interface TrophyRecord {
   country: string | null;
   wonAt: string;
   stabCount: number;
+  /** くじの版(記録が無ければ 1)。姿を固定するための印 */
+  trophyV?: number;
 }
 
-/** GET /api/trophies?page=N のレスポンス */
+/** GET /api/trophies?offset=N&limit=M のレスポンス */
 export interface TrophiesResponse {
   total: number;
-  page: number;
-  perPage: number;
+  offset: number;
+  limit: number;
   items: TrophyRecord[];
 }
