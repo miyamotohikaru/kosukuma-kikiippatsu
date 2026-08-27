@@ -4,7 +4,15 @@
 import { hashString, mulberry32, pick, randRange } from "./prng";
 
 /** カップ輪郭の系統 */
-export type CupStyle = "wine" | "urn" | "angular" | "dish" | "rocket";
+export type CupStyle =
+  | "wine" // ワイングラス
+  | "urn" // 壺
+  | "angular" // 角ばった段
+  | "dish" // 浅く広い皿
+  | "rocket" // ロケット
+  | "tulip" // チューリップ(すぼまって開く)
+  | "orb" // 球をのせた台
+  | "column"; // 柱(まっすぐ)
 /** 持ち手の種類 */
 export type HandleStyle = "none" | "round" | "square";
 /** てっぺんの飾り */
@@ -15,7 +23,9 @@ export type TopperKind =
   | "rocket" // ロケット
   | "planet" // リング付き惑星
   | "bear" // くま頭(球3つ)
-  | "diamond"; // ダイヤ
+  | "diamond" // ダイヤ
+  | "crown" // 王冠
+  | "ring"; // 立てた輪(惑星の環のような)
 /**
  * 素材の系統。**色はこのゲームでいちばん記憶に残るところ**なので、
  * 「金・銀・銅」の3色だけにせず、宝石や鉱物まで広げて12系統ある。
@@ -43,6 +53,9 @@ const CUP_STYLES: readonly CupStyle[] = [
   "angular",
   "dish",
   "rocket",
+  "tulip",
+  "orb",
+  "column",
 ];
 const TOPPERS: readonly TopperKind[] = [
   "star",
@@ -52,6 +65,8 @@ const TOPPERS: readonly TopperKind[] = [
   "planet",
   "bear",
   "diamond",
+  "crown",
+  "ring",
 ];
 
 /** 台座の1段(下から積む) */
@@ -234,6 +249,57 @@ function buildCupProfile(style: CupStyle, rng: () => number): BuiltProfile {
         ])
       );
     }
+    case "tulip": {
+      // チューリップ型: 足もとから一度すぼまって、口へ向かってふわりと開く
+      const footR = randRange(rng, 0.44, 0.58);
+      const waistR = randRange(rng, 0.26, 0.36);
+      const waistY = randRange(rng, 0.24, 0.34);
+      const openY = randRange(rng, 0.72, 0.82);
+      return normalizeProfile(
+        smoothProfile([
+          [0.02, 0],
+          [footR, 0.02],
+          [footR * 0.72, 0.08],
+          [waistR, waistY],
+          [waistR * 1.5, openY],
+          [1, 1],
+          [0.9, 0.99],
+          [0.8, 0.92],
+        ])
+      );
+    }
+    case "orb": {
+      // 球型: 短い台の上にまるい玉。ほかの系統に無い「丸だけ」の輪郭
+      const footR = randRange(rng, 0.4, 0.52);
+      const baseY = randRange(rng, 0.14, 0.22);
+      const orbY = baseY + randRange(rng, 0.36, 0.44);
+      return normalizeProfile(
+        smoothProfile([
+          [0.02, 0],
+          [footR, 0.02],
+          [footR * 0.66, baseY],
+          [0.62, orbY - 0.16],
+          [1, orbY],
+          [0.62, orbY + 0.16],
+          [0.16, 1],
+        ])
+      );
+    }
+    case "column": {
+      // 柱型: まっすぐ立った角柱に小さな笠。記念碑のような静けさ
+      const shaftR = randRange(rng, 0.34, 0.44);
+      const capY = randRange(rng, 0.82, 0.9);
+      return normalizeProfile([
+        [0.02, 0],
+        [0.72, 0],
+        [0.72, 0.05],
+        [shaftR, 0.1],
+        [shaftR, capY],
+        [0.62, capY + 0.03],
+        [0.62, capY + 0.08],
+        [0.5, 1],
+      ]);
+    }
     case "rocket": {
       // ロケット型: 裾のフィンが最大径、胴からノーズへすぼまる
       const bodyR = randRange(rng, 0.5, 0.62);
@@ -288,7 +354,7 @@ interface MaterialRecipe {
 
 const MATERIALS: Record<MaterialKind, MaterialRecipe> = {
   silver: {
-    color: "#e3e8f2",
+    color: "#e0e7f6",
     metal: [0.9, 1],
     rough: [0.12, 0.28],
     emissive: "#4a5878",
@@ -336,16 +402,18 @@ const MATERIALS: Record<MaterialKind, MaterialRecipe> = {
     emissiveI: [0.12, 0.2],
   },
   sapphire: {
-    color: "#2f5fd0",
-    metal: [0.55, 0.72],
-    rough: [0.12, 0.24],
-    emissive: "#1b3a94",
-    emissiveI: [0.26, 0.4],
+    // 紺(nebula)と混ざらないよう、はっきり明るい青へ寄せる
+    color: "#2f9ce0",
+    metal: [0.6, 0.76],
+    rough: [0.1, 0.2],
+    emissive: "#125f9c",
+    emissiveI: [0.24, 0.36],
     sparkle: true,
   },
   pearl: {
-    // 真珠。金属感は低く、うっすら干渉色がのる
-    color: "#fdf3ea",
+    // 真珠。ぎん・オーロラと並んでも別物に見えるよう、**暖かい象牙色**へ。
+    // 金属感は低く、うっすら干渉色がのる
+    color: "#fbe6c8",
     metal: [0.3, 0.45],
     rough: [0.16, 0.3],
     emissive: "#8d7f9e",
@@ -353,7 +421,8 @@ const MATERIALS: Record<MaterialKind, MaterialRecipe> = {
     iridescence: 1,
   },
   amethyst: {
-    color: "#8b52d6",
+    // 紺(nebula)から離すため、赤紫まで振る
+    color: "#b544c6",
     metal: [0.5, 0.68],
     rough: [0.14, 0.26],
     emissive: "#4a1e8a",
@@ -361,12 +430,14 @@ const MATERIALS: Record<MaterialKind, MaterialRecipe> = {
     sparkle: true,
   },
   nebula: {
-    // 深い紺 + 内側から光る紫 + ラメ
-    color: "#262c66",
-    metal: [0.5, 0.7],
-    rough: [0.28, 0.42],
-    emissive: "#6a5df0",
-    emissiveI: [0.3, 0.45],
+    // 深い紺 + 内側から光る青紫 + ラメ。第4代はこれ。
+    // 自発光を強くすると紫へ寄って「紺」に見えなくなるので、
+    // 光は青寄り・弱めにして、地の紺を残す
+    color: "#17205e",
+    metal: [0.62, 0.78],
+    rough: [0.18, 0.28],
+    emissive: "#3247c8",
+    emissiveI: [0.22, 0.32],
     sparkle: true,
   },
   coral: {
@@ -388,14 +459,19 @@ const MATERIALS: Record<MaterialKind, MaterialRecipe> = {
   },
 };
 
-function buildMaterial(kind: MaterialKind, rng: () => number): TrophyMaterialParams {
+function buildMaterial(
+  kind: MaterialKind,
+  rng: () => number,
+  lap = 0,
+): TrophyMaterialParams {
   const r = MATERIALS[kind];
+  const tint = lapTint(lap);
   return {
     kind,
-    color: r.color,
+    color: shiftColor(r.color, tint.deg, tint.light),
     metalness: randRange(rng, r.metal[0], r.metal[1]),
     roughness: randRange(rng, r.rough[0], r.rough[1]),
-    emissive: r.emissive,
+    emissive: shiftColor(r.emissive, tint.deg, tint.light),
     emissiveIntensity: randRange(rng, r.emissiveI[0], r.emissiveI[1]),
     iridescence: r.iridescence ?? 0,
     sparkle: r.sparkle ?? false,
@@ -408,19 +484,72 @@ function buildMaterial(kind: MaterialKind, rng: () => number): TrophyMaterialPar
  * 12系統あるので、13代で一周する。
  */
 const FAMILY: readonly MaterialKind[] = [
-  "silver",
-  "gold",
-  "aurora",
-  "rose",
+  "silver", // 第1代
+  "gold", // 第2代
+  "aurora", // 第3代
+  "nebula", // 第4代: 紺色 + ラメ
+  "coral", // 暖色
   "emerald",
-  "bronze",
+  "rose", // 暖色
   "sapphire",
-  "pearl",
+  "bronze", // 暖色
   "amethyst",
-  "nebula",
-  "coral",
+  "pearl",
   "obsidian",
 ];
+
+/**
+ * 12系統を一周したあと(第13代〜)の振り分け。
+ * **色相は少ししか回さない。** 大きく回すと「きん」が緑になってしまい、
+ * 系統の名前と姿が食い違う。まわりと見分けがつけばいいので、
+ * 色相を ±11°ずつ、明るさを ±1割ずつ、周回ごとに交互へ広げていく。
+ * (灰・白・黒は色相を回しても変わらないので、明るさの方で差をつける)
+ */
+function lapTint(lap: number): { deg: number; light: number } {
+  if (lap <= 0) return { deg: 0, light: 1 };
+  const step = Math.ceil(lap / 2);
+  const sign = lap % 2 === 1 ? 1 : -1;
+  return {
+    deg: sign * 11 * step,
+    light: Math.min(1.3, Math.max(0.68, 1 + sign * -0.08 * step)),
+  };
+}
+
+/** #rrggbb の色相と明るさをずらす(彩度はそのまま) */
+function shiftColor(hex: string, deg: number, light: number): string {
+  if (deg === 0 && light === 1) return hex;
+  const n = parseInt(hex.slice(1), 16);
+  const r = ((n >> 16) & 255) / 255;
+  const g = ((n >> 8) & 255) / 255;
+  const b = (n & 255) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+  let l = (max + min) / 2;
+  const sat = d === 0 ? 0 : l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  // 無彩色(灰・白・黒)は色相を持たないので 0 のままにして、明るさだけで差をつける
+  let h = 0;
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+    else if (max === g) h = ((b - r) / d + 2) / 6;
+    else h = ((r - g) / d + 4) / 6;
+    h = (((h + deg / 360) % 1) + 1) % 1;
+  }
+  l = Math.min(0.97, Math.max(0.04, l * light));
+  const q = l < 0.5 ? l * (1 + sat) : l + sat - l * sat;
+  const pp = 2 * l - q;
+  const ch = (t: number) => {
+    let x = ((t % 1) + 1) % 1;
+    if (x < 1 / 6) x = pp + (q - pp) * 6 * x;
+    else if (x < 1 / 2) x = q;
+    else if (x < 2 / 3) x = pp + (q - pp) * (2 / 3 - x) * 6;
+    else x = pp;
+    return Math.round(x * 255);
+  };
+  return `#${((1 << 24) | (ch(h + 1 / 3) << 16) | (ch(h) << 8) | ch(h - 1 / 3))
+    .toString(16)
+    .slice(1)}`;
+}
 
 /**
  * roundNo と名前からトロフィーの全パラメータを決定的に生成する。
@@ -465,6 +594,9 @@ export function getTrophyParams(roundNo: number, name: string): TrophyParams {
     angular: 0.95,
     dish: 1.3,
     rocket: 0.72,
+    tulip: 1,
+    orb: 0.95,
+    column: 0.8,
   };
   const cupMaxRadius =
     randRange(rng, 0.17, 0.23) * widthScale * styleWidth[cupStyle];
@@ -522,7 +654,9 @@ export function getTrophyParams(roundNo: number, name: string): TrophyParams {
     FAMILY[((roundNo - 1) % FAMILY.length + FAMILY.length) % FAMILY.length];
   if (rareNebula) kind = "nebula";
   if (rareRainbow || superRare) kind = "aurora";
-  const material = buildMaterial(kind, rng);
+  // 12系統を一周したら色相を回して、前の周と同じ色にならないようにする
+  const lap = Math.floor(Math.max(0, roundNo - 1) / FAMILY.length);
+  const material = buildMaterial(kind, rng, lap);
 
   return {
     seed,

@@ -2925,8 +2925,9 @@ button.kk-charm-btn:active .kk-charm-cell {
 .feed-row.feed-chat {
   align-items: baseline;
   max-width: 100%;
-  padding: 5px 12px 5px 8px;
-  background: rgba(5, 7, 26, 0.5);
+  padding: 5px 11px 5px 8px;
+  /* 地も少し濃くする。星空の上だと 0.5 では字が浮いてしまう */
+  background: rgba(5, 7, 26, 0.62);
 }
 /* 名前は読み手がいちばん先に見るところ。色で本文と分ける */
 .feed-name {
@@ -2936,7 +2937,7 @@ button.kk-charm-btn:active .kk-charm-cell {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 800;
   color: var(--accent, #ffd93d);
 }
@@ -2958,10 +2959,14 @@ button.kk-charm-btn:active .kk-charm-cell {
   min-width: 0;
   /* コメントは折り返してぜんぶ読ませる(名前だけは1行に詰める) */
   overflow-wrap: anywhere;
-  font-size: 12px;
-  font-weight: 600;
+  /* 携帯の細い字だと、透かした白は霞んで読めない。
+     **本文だけは透かさず、影で背景から起こす。**
+     小さくしたぶんは太さで補う */
+  font-size: 11.5px;
+  font-weight: 700;
   line-height: 1.45;
-  color: rgba(255, 254, 242, 0.95);
+  color: #fffef2;
+  text-shadow: 0 1px 3px rgba(5, 7, 26, 0.85);
 }
 
 .feed-empty {
@@ -3037,20 +3042,9 @@ button.kk-charm-btn:active .kk-charm-cell {
   color: #a97d00;
   text-shadow: none;
 }
-.feedlog-row.is-chat /* コメントの時刻。本文のじゃまをしない濃さで、右端にそっと置く */
-.feed-row.feed-chat .feed-time {
-  flex: 0 0 auto;
-  align-self: center;
-  margin-left: auto;
-  padding-left: 4px;
-  font-size: 9.5px;
-  font-weight: 700;
-  color: rgba(255, 254, 242, 0.42);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
 
-.feed-body {
+/* 「ぜんぶ みる」の地はクリーム色。3D用の白い字のままだと読めない */
+.feedlog-row.is-chat .feed-body {
   flex: 1 1 auto;
   color: #3a3730;
   text-shadow: none;

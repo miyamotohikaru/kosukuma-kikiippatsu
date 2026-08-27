@@ -42,8 +42,12 @@ export const OPERATOR_CHAT_IDS: readonly number[] = [1, 13];
 
 /** 「ぜんぶ みる」で1回にさかのぼる件数 */
 export const CHAT_PAGE = 50;
-/** 右上の「だれが刺したか」の記録で、一度に見える行数 */
-export const STAB_LOG_ROWS = 6;
+/**
+ * 右上の「だれが刺したか」の記録で、一度に見える行数。
+ * 携帯だと縦が短く、6行あるとこすくまくんの顔にちょうど重なってしまう。
+ * 2行だけ出して、続きは指でさかのぼる。
+ */
+export const STAB_LOG_ROWS = 2;
 
 /**
  * 左下のチャットで、一度に見える行数(コメントだけ・新しいものが下)。

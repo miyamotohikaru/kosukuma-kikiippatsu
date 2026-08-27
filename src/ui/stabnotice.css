@@ -9,7 +9,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  width: min(64vw, 250px);
+  width: min(62vw, 244px);
   padding: 6px 8px 7px;
   border-radius: 14px;
   background: linear-gradient(
@@ -45,10 +45,26 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
-  /* 見えるのは --stab-rows 行ぶん。あふれたぶんは静かに切る
-     (触れない窓なので、スクロールバーは出さない) */
-  max-height: calc(var(--stab-rows, 6) * 25px);
-  overflow: hidden;
+  /* 見えるのは --stab-rows 行ぶん。続きは指でさかのぼる */
+  max-height: calc(var(--stab-rows, 2) * 25px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* ここだけ触れるようにする。枠(.stabnotice)は none のままなので、
+     まわりを指でなぞれば月はふつうに回せる */
+  pointer-events: auto;
+  touch-action: pan-y;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 254, 242, 0.28) transparent;
+}
+.stabnotice-list::-webkit-scrollbar {
+  width: 4px;
+}
+.stabnotice-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 254, 242, 0.28);
+}
+.stabnotice-list::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .stabnotice-row {
