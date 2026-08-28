@@ -269,21 +269,36 @@ const D_CORE = (() => {
 //   ・粒どうしは軽く重なる。離すと「点が散っている」だけに見えて房にならない
 
 /**
- * チャームをぶら下げる点(鍔の右のボスの下)。8個までは刃にまったく重ならない。
- * 9個以上で3列になると左の列が刃のふちに1.6ほどかかるが、刃の幅18.6に対して
- * 8%なので輪郭は読めたまま。実物のキーホルダーも刃の前に垂れるので違和感は無い。
+ * チャームをぶら下げる点(鍔の右のボスの下)。
+ * 実物のキーホルダー(参考写真)と同じ作りにしてある:
+ *   鍔のはしに **大きな割りカン** が1つ通っていて、
+ *   そこから短いチェーンが何本も出て、チャームが房になって垂れる。
+ * 房は刃の右のふちに少しかぶる。写真でもチャームは刃の前に垂れているので、
+ * かぶらないように離すと、かえって「くっついていない」絵になる。
  */
+/**
+ * 房のために右へ広げる幅。
+ * 鍔は viewBox の幅ほぼいっぱい(41.4 / 44)なので、写真のように
+ * 刃のよこへ房を垂らす余地がもともと無い。**房があるときだけ**右へ足す。
+ */
+const CHARM_ROOM = 11;
+
 const CHARM_X = BOSS_DX;
 const CHARM_TOP = GUARD_CY + BOSS_R * 0.6;
-/** キーホルダーの輪。ここから糸が分かれて房になる */
-const RING_CY = CHARM_TOP + 2.6;
-const RING_R = 1.5;
+/** 割りカン。ここから房が分かれる */
+const RING_R = 3;
+const RING_CY = CHARM_TOP + RING_R + 0.4;
 
-/** 個数から房の割りつけを決める。3個までは1列(いままでと同じ見え方) */
+/**
+ * 個数から房の組みかたを決める。
+ * 写真の房は「扇」ではなく、**割りカンから短いチェーンで下がった、
+ * 2〜3列の かたまり**。扇にすると端のチャームが横を向いてしまい、
+ * 「ぶら下がっている」ように見えなくなる。
+ */
 function charmPack(n: number) {
-  if (n <= 3) return { cols: 1, r: 2.95, colGap: 0, rowGap: 6.8 };
-  if (n <= 8) return { cols: 2, r: 2.55, colGap: 5.4, rowGap: 5.3 };
-  return { cols: 3, r: 2.15, colGap: 4.2, rowGap: 4.6 };
+  if (n <= 3) return { cols: 1, r: 3.2, colGap: 0, rowGap: 6 };
+  if (n <= 6) return { cols: 2, r: 3.1, colGap: 6.2, rowGap: 5.2 };
+  return { cols: 3, r: 3.05, colGap: 6, rowGap: 4.7 };
 }
 
 interface CharmBead {
@@ -292,21 +307,26 @@ interface CharmBead {
   /** CX からの相対x */
   x: number;
   y: number;
+  /** 割りカンからの落差。深い(奥の列)ほど先に描いて、手前に重ねる */
+  depth: number;
 }
 
-/** 房の座標を組み立てる。古い順に上から、いちばん新しいものが房の底に来る */
+/**
+ * 房の座標を組み立てる。古い順に上から、いちばん新しいものが房の底に来る。
+ * かたまりは割りカンの真下より**すこし左**に置いて、刃のふちにかぶせる。
+ * 写真でもチャームは刃の前に垂れているので、離すと逆に「くっついていない」絵になる。
+ */
 function layoutCharms(indices: number[]) {
   const n = indices.length;
   const { cols, r, colGap, rowGap } = charmPack(n);
   const rows = Math.ceil(n / cols);
-  // 右へはみ出すと viewBox に切られるので、房の右端で止める。
-  // 1.6 は隠しチャームの光の輪(r+0.9・線0.6)がはみ出さないための余白
-  const limit = VB_W / 2 - 1.6 - r;
-  const right = Math.min(CHARM_X + ((cols - 1) * colGap) / 2, limit);
+  // 右端は viewBox の内側で止める(切れると「壊れた絵」に見える)
+  // 房は刃のよこ(広げたぶん)へ垂らす。右端は広げた箱の内側で止める
+  const right = Math.min(CHARM_X + 6.5, VB_W / 2 + CHARM_ROOM - 1.4 - r);
   const colX: number[] = [];
   for (let c = 0; c < cols; c++) colX.push(right - (cols - 1 - c) * colGap);
-  const top = RING_CY + RING_R + r + 1.2;
-  // 端数は1行目に置く。下の行ほど詰まっていると、房が下に向かって広がって見える
+  const top = RING_CY + RING_R + r + 0.4;
+  // 端数は1行目に置く。下の行ほど詰まっていると、房が下へ広がって見える
   const head = n - (rows - 1) * cols;
   const beads: CharmBead[] = [];
   let k = 0;
@@ -314,16 +334,26 @@ function layoutCharms(indices: number[]) {
     const cnt = row === 0 ? head : cols;
     const off = Math.round((cols - cnt) / 2);
     for (let c = 0; c < cnt; c++) {
-      beads.push({ i: indices[k++], x: colX[off + c], y: top + row * rowGap });
+      const col = off + c;
+      // 碁盤の目に並べると作り物に見える。列と行で互い違いにずらす
+      const jx = ((row + col) % 2 === 0 ? -1 : 1) * 0.85;
+      const jy = (col % 2 === 0 ? 0 : 1.1) + (row % 2 === 0 ? 0 : 0.5);
+      const y = top + row * rowGap + jy;
+      beads.push({ i: indices[k++], x: colX[col] + jx, y, depth: y });
     }
   }
-  // 糸は「輪 → その列のいちばん下の粒」を1本ずつ。粒のうしろに敷く
+  // チェーンは列ごとに1本。写真でも1本のチェーンに何個かぶら下がっていて、
+  // 1個ずつ別のチェーンにすると、割りカンのまわりが線だらけになる
   const strands = colX.map((x) => {
     let bottom = top;
-    for (const b of beads) if (b.x === x && b.y > bottom) bottom = b.y;
+    for (const b of beads) {
+      if (Math.abs(b.x - x) < colGap / 2 && b.y > bottom) bottom = b.y;
+    }
     return { x, bottom };
   });
-  return { beads, strands, r };
+  // 落差の大きいもの(奥)から描く。短いものが手前に重なって、房に厚みが出る
+  const order = [...beads].sort((p, q) => q.depth - p.depth);
+  return { beads: order, strands, r };
 }
 
 // ── 仕上げ ────────────────────────────────────────────
@@ -463,6 +493,11 @@ export interface SwordArtProps {
    */
   charmShapes?: boolean;
   /**
+   * true = チャームの目・数字・水玉まで描く。大きく出すとき(したくの
+   * プレビュー)だけ。小さい絵で描くと、細部がつぶれて泥になる
+   */
+  charmDetail?: boolean;
+  /**
    * viewBox の下端。既定は剣先まで(102)。小さい値にすると刃の下が切れるので、
    * 台に挿さっているように見せたいとき(プレビュー)に使う。
    * 切ると縦横比が変わり、同じ幅でも剣を大きく描ける。
@@ -478,6 +513,7 @@ export default function SwordArt({
   earthCharm = false,
   charmIndices,
   charmShapes = false,
+  charmDetail = false,
   cropY,
   className,
 }: SwordArtProps) {
@@ -516,7 +552,15 @@ export default function SwordArt({
   return (
     <svg
       className={className ? `kk-svg ${className}` : "kk-svg"}
-      viewBox={`0 0 ${VB_W} ${cropY ?? VB_H}`}
+      /* 房があるときは右へ CHARM_ROOM ぶん広げる。
+         下を切って見せる場所(cropY)では箱を広げ、それ以外は箱からはみ出させる
+         (ラックでは、はみ出した房がとなりの剣とのすき間に垂れる = 写真と同じ) */
+      viewBox={`0 0 ${VB_W + (beads.length > 0 && cropY != null ? CHARM_ROOM : 0)} ${
+        cropY ?? VB_H
+      }`}
+      style={
+        beads.length > 0 && cropY == null ? { overflow: "visible" } : undefined
+      }
       aria-hidden="true"
       focusable="false"
     >
@@ -555,32 +599,59 @@ export default function SwordArt({
       {/* ── チャーム: 鍔の右のボスから、キーホルダーの房のように垂らす ── */}
       {beads.length > 0 && (
         <g className="kk-svg-charms">
-          {/* 輪までの短いひも */}
+          {/* 鍔のはしと割りカンをつなぐ、短い金具 */}
           <path
-            d={`M${pt(CHARM_X, CHARM_TOP)}L${pt(CHARM_X, RING_CY - RING_R + 0.3)}`}
+            d={`M${pt(CHARM_X, CHARM_TOP - 1)}L${pt(CHARM_X, RING_CY - RING_R + 0.4)}`}
             fill="none"
-            stroke="rgba(0,0,0,.34)"
-            strokeWidth="1.1"
+            stroke="rgba(70,78,94,.9)"
+            strokeWidth="1.6"
             strokeLinecap="round"
           />
-          {/* 列ごとの糸。粒のうしろに敷くので、玉が糸に通って見える */}
-          {strands.map((s) => (
-            <path
-              key={s.x}
-              d={`M${pt(CHARM_X, RING_CY)}L${pt(s.x, s.bottom)}`}
-              fill="none"
-              stroke="rgba(0,0,0,.3)"
-              strokeWidth="0.75"
-              strokeLinecap="round"
-            />
+          {/* チェーン。列ごとに1本、割りカンから垂らす。
+              粒より先に敷くので、チャームがチェーンに下がって見える */}
+          {strands.map((st) => (
+            <g key={`ch${st.x}`}>
+              <path
+                d={`M${pt(CHARM_X, RING_CY + RING_R * 0.5)}L${pt(st.x, st.bottom)}`}
+                fill="none"
+                stroke="rgba(28,32,44,.5)"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+              />
+              <path
+                d={`M${pt(CHARM_X, RING_CY + RING_R * 0.5)}L${pt(st.x, st.bottom)}`}
+                fill="none"
+                stroke="rgba(216,224,240,.9)"
+                strokeWidth="0.8"
+                strokeLinecap="round"
+              />
+            </g>
           ))}
+          {/* 割りカン(実物の二重の輪)。ここが房の要なので、はっきり金属で描く */}
           <circle
             cx={n2(CX + CHARM_X)}
             cy={n2(RING_CY)}
             r={n2(RING_R)}
             fill="none"
-            stroke="rgba(255,255,255,.7)"
-            strokeWidth="0.85"
+            stroke="rgba(28,32,44,.55)"
+            strokeWidth="2"
+          />
+          <circle
+            cx={n2(CX + CHARM_X)}
+            cy={n2(RING_CY)}
+            r={n2(RING_R)}
+            fill="none"
+            stroke="#cfd7e6"
+            strokeWidth="1.25"
+          />
+          <path
+            d={`M${pt(CHARM_X - RING_R * 0.72, RING_CY - RING_R * 0.72)}A${n2(
+              RING_R
+            )} ${n2(RING_R)} 0 0 1 ${pt(CHARM_X + RING_R * 0.2, RING_CY - RING_R)}`}
+            fill="none"
+            stroke="rgba(255,255,255,.95)"
+            strokeWidth="0.6"
+            strokeLinecap="round"
           />
           {beads.map((b) => {
             const c = CHARMS[b.i];
@@ -611,7 +682,7 @@ export default function SwordArt({
                       b.y - 14 * (beadR * 2) / 19
                     )}) scale(${((beadR * 2) / 19).toFixed(4)})`}
                   >
-                    <CharmGlyph index={b.i} detail={false} ring={false} />
+                    <CharmGlyph index={b.i} detail={charmDetail} ring={false} />
                   </g>
                 ) : (
                   <>

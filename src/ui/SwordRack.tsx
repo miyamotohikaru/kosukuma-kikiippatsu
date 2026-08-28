@@ -116,6 +116,7 @@ export function SwordPreview() {
             skin={swordSkin}
             charmIndices={hung}
             charmShapes
+            charmDetail
             cropY={77}
           />
         </span>
@@ -201,10 +202,13 @@ export function SwordRack() {
                 {/* チャームは「いまつけているぶん」。35px幅では1粒が3px
                     しかないので形では描かず、色つきの丸ビーズの房で見せる
                     (形を見たいときは上のプレビューが引き受ける) */}
+                {/* 写真の陳列と同じで、ラックの剣にもチャームの「形」を
+                    ぶら下げる。35px では細部はつぶれるので輪郭だけ */}
                 <SwordArt
                   color={i}
                   skin={swordSkin}
                   charmIndices={sel ? hung : EMPTY}
+                  charmShapes
                 />
               </span>
             </button>
