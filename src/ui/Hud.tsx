@@ -24,7 +24,6 @@ import { CharmGet } from "./CharmShelf";
 import GearDrawer from "./GearDrawer";
 import FeedLog from "./FeedLog";
 import ShareCard from "./ShareCard";
-import StabCharms from "./StabCharms";
 import StabNotice from "./StabNotice";
 import "./ui.css";
 
@@ -335,9 +334,6 @@ export default function Hud() {
           onAnimationEnd={() => setFlashId(0)}
         />
       )}
-
-      {/* 刺している最中の、大きなチャーム */}
-      <StabCharms />
 
       {/* 右上「だれが刺したか」の通知 */}
       <StabNotice />

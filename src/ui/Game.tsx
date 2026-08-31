@@ -22,6 +22,13 @@ const GameCanvas = dynamic(() => import("@/game/scene/GameCanvas"), {
 // タイトルの初回表示にthree.jsを持ち込まないための分割。
 const SpeechBubble = dynamic(() => import("./SpeechBubble"), { ssr: false });
 
+// 月の1000本にぶら下げるチャームの絵を1枚に焼く。画面の外でSVGを描いて
+// カンバスへ写し取るだけなので、DOM側に置く(焼けたら自分で消える)
+const CharmAtlasBuilder = dynamic(
+  () => import("@/game/scene/effects/charmAtlas"),
+  { ssr: false }
+);
+
 export default function Game() {
   const init = useGameStore((s) => s.init);
   useEffect(() => {
@@ -39,6 +46,7 @@ export default function Game() {
       <TitleScreen />
       <NameModal />
       <Toast />
+      <CharmAtlasBuilder />
       <AudioDirector />
       <SpeechDirector />
     </div>

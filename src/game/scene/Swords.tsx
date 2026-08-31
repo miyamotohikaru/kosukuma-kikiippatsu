@@ -14,14 +14,14 @@
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
-import { CHARMS, HOLE_COUNT, SWORD_COLORS, SWORD_SKINS } from "@/lib/config";
+import { HOLE_COUNT, SWORD_COLORS, SWORD_SKINS } from "@/lib/config";
 import { getBit } from "@/lib/bitmask";
 import { getHolePoints } from "@/lib/holes";
-import { charmIndicesFor, skinOf } from "@/lib/style";
+import { skinOf } from "@/lib/style";
 import { useGameStore } from "@/game/store";
 import { makeCircleTexture } from "@/game/scene/effects/textures";
+import SwordCharms from "@/game/scene/effects/SwordCharms";
 import {
-  makeCharmBeadGeometry,
   makeSwordMaterial,
   makeToySwordGeometry,
   orientSword,
@@ -33,42 +33,8 @@ const tmpObj = new THREE.Object3D();
 const tmpNormal = new THREE.Vector3();
 const tmpQuat = new THREE.Quaternion();
 const tmpColor = new THREE.Color();
-const tmpBead = new THREE.Matrix4();
-const tmpBeadLocal = new THREE.Matrix4();
-
-/** チャームの数からビーズの大きさ。1個=そのまま、13個で1.45倍まで */
-const BEAD_GROW = 0.04;
-const BEAD_GROW_MAX = 1.45;
-
-/**
- * ビーズだけを「ぶら下げ点まわり」で拡大する行列。
- * ビーズのジオメトリには吊り点の位置が焼き込んであるので、ただ scale すると
- * 剣から離れてしまう。T(anchor)・S(k)・T(-anchor) で位置を留めたまま太らせる。
- */
-function beadScaleMatrix(count: number, out: THREE.Matrix4): THREE.Matrix4 {
-  const k = Math.min(1 + BEAD_GROW * (count - 1), BEAD_GROW_MAX);
-  const a = SWORD_DIMS.charmAnchor;
-  out.makeScale(k, k, k);
-  out.setPosition(a.x * (1 - k), a.y * (1 - k), a.z * (1 - k));
-  return out;
-}
-
-/** SWORD_COLORS / CHARMS を THREE.Color に変換したキャッシュ */
+/** SWORD_COLORS を THREE.Color に変換したキャッシュ */
 const SWORD_TINTS = SWORD_COLORS.map((c) => new THREE.Color(c.hex));
-/**
- * ビーズの色 = そのチャームの地の色。ただしエイトボールのような真っ黒は、
- * 1000本ぶんの小さなビーズにすると宇宙に溶けて「何も付いていない剣」に
- * 見えてしまう。**遠景のビーズだけ**明るさに下限を入れる
- * (近くで見る自分の剣のチャームは、黒いままつやのある黒で描かれる)。
- */
-const BEAD_MIN_L = 0.34;
-const CHARM_TINTS = CHARMS.map((c) => {
-  const col = new THREE.Color(c.hex);
-  const hsl = { h: 0, s: 0, l: 0 };
-  col.getHSL(hsl);
-  if (hsl.l < BEAD_MIN_L) col.setHSL(hsl.h, hsl.s, BEAD_MIN_L);
-  return col;
-});
 
 /** 自分の剣の上でふんわり光るハロ(1個分) */
 function MyGlow({ holeId, colorHex }: { holeId: number; colorHex: string }) {
@@ -122,11 +88,9 @@ export default function Swords() {
 
   const points = useMemo(() => getHolePoints(), []);
   const geometry = useMemo(() => makeToySwordGeometry("field"), []);
-  const beadGeometry = useMemo(() => makeCharmBeadGeometry(), []);
 
   // スキンごとの InstancedMesh。ref はスキンindexで引けるようにしておく
   const meshes = useRef(new Map<number, THREE.InstancedMesh>());
-  const beadRef = useRef<THREE.InstancedMesh>(null);
 
   // マテリアルは使い回す(スキンが増えても既存を作り直さない)
   const materials = useMemo(() => new Map<number, THREE.MeshPhysicalMaterial>(), []);
@@ -140,23 +104,17 @@ export default function Swords() {
     }
     return m;
   };
-  // チャームのビーズもプラスチックの質感を借りる(色はインスタンスカラー)
-  const beadMaterial = useMemo(() => makeSwordMaterial(0, "#ffffff"), []);
 
   useEffect(() => {
     const geo = geometry;
-    const bead = beadGeometry;
     const mats = materials;
-    const beadMat = beadMaterial;
     return () => {
       geo.dispose();
-      bead.dispose();
-      beadMat.dispose();
       // キャッシュは空にしない(空にすると、再マウント時に描画中のメッシュと
       // マテリアルの参照がずれて、にじいろの更新先を見失う)
       mats.forEach((m) => m.dispose());
     };
-  }, [geometry, beadGeometry, materials, beadMaterial]);
+  }, [geometry, materials]);
 
   // いま「降ってきて刺さる」演出を **実際に受け持っている** 穴だけ、ここでは
   // 描かない(二重に見せない)。順番待ちのぶんまで隠すと、混んでいるときに
@@ -182,8 +140,6 @@ export default function Swords() {
   // mask/色/スキン/演出中の穴 が変わったときだけ行列と色を再構築
   useEffect(() => {
     const counts = new Map<number, number>();
-    const bead = beadRef.current;
-    let beadN = 0;
 
     for (let id = 0; id < HOLE_COUNT; id++) {
       if (!getBit(mask, id)) continue;
@@ -211,19 +167,6 @@ export default function Swords() {
       }
       counts.set(skin, n + 1);
 
-      // チャームは鍔の下のビーズ1個にまとめる。何を持っているかは
-      // charmIndicesOf が正で、色は「いちばん新しいチャーム」= 配列の最後
-      // (地球をこわした人なら、隠しチャームの青いビーズになる)
-      const charms = charmIndicesFor(style, stabCharms[id]);
-      if (charms.length > 0 && bead) {
-        tmpBead.multiplyMatrices(
-          tmpObj.matrix,
-          beadScaleMatrix(charms.length, tmpBeadLocal)
-        );
-        bead.setMatrixAt(beadN, tmpBead);
-        bead.setColorAt(beadN, CHARM_TINTS[charms[charms.length - 1]]);
-        beadN++;
-      }
     }
 
     meshes.current.forEach((mesh, skin) => {
@@ -231,11 +174,6 @@ export default function Swords() {
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     });
-    if (bead) {
-      bead.count = beadN;
-      bead.instanceMatrix.needsUpdate = true;
-      if (bead.instanceColor) bead.instanceColor.needsUpdate = true;
-    }
   }, [mask, stabColors, stabStyles, stabCharms, points, hidden, presentSkins]);
 
   // にじいろの色相と、金属・宝石のきらめきは時間で動く。
@@ -274,13 +212,9 @@ export default function Swords() {
           raycast={() => undefined}
         />
       ))}
-      {/* チャームのビーズ(スキンをまたいで1本にまとめる) */}
-      <instancedMesh
-        ref={beadRef}
-        args={[beadGeometry, beadMaterial, HOLE_COUNT]}
-        frustumCulled={false}
-        raycast={() => undefined}
-      />
+      {/* チャームの房。立体をやめて、絵を貼った板を正面へ向けている
+          (1000本 × 10個を立体で作ると、どうやっても持たない) */}
+      <SwordCharms />
       {/* 自分の剣の目印(この端末で刺したもの)。色は刺したときの色に合わせる */}
       {myStabs.map((id) => {
         if (!getBit(mask, id)) return null;
