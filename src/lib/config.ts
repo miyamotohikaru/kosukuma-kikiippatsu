@@ -168,7 +168,7 @@ export const SWORD_SKINS: readonly SwordSkin[] = [
   },
   {
     name: "にじいろ",
-    needWins: 3,
+    needWins: 5,
     tinted: false,
     hex: "#ffffff",
     metalness: 0.72,
