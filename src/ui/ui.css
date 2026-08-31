@@ -1504,9 +1504,12 @@
 .kk-preview-stage {
   position: relative;
   flex: none;
-  /* 剣そのものは 70px。左右の 4px は「揺れしろ」で、ここが無いと
-     いちばん張り出す鍔の端が台のふちに当たって切れる */
-  width: 78px;
+  /* 房のぶん viewBox が右へ広がったので、台も広げる。
+     広げないと、同じ幅の中で剣ごと縮んでチャームが粒に戻ってしまう。
+     高さは中身なり(align-self)。器の高さに合わせて縮めると、
+     房のいちばん下が台のふちで切れる */
+  width: 108px;
+  align-self: flex-start;
   border-radius: 13px;
   overflow: hidden;
   background: linear-gradient(180deg, var(--kk-well-top), var(--kk-well-bot));
@@ -2493,7 +2496,7 @@ button.kk-charm-btn:active .kk-charm-cell {
     margin-left: -13.5px;
   }
   .kk-preview-stage {
-    width: 72px;
+    width: 98px;
   }
   .kk-skin-stage {
     height: 40px;

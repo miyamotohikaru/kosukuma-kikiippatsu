@@ -400,10 +400,13 @@
   font-weight: 800;
 }
 
-/* 人のトロフィーのシェア。金の「じまん」とは別物だと分かるよう、地は控えめに */
+/* 人のトロフィーのシェア。金の「じまん」とは別物だと分かるよう地は控えめに。
+   **ただしカードはクリーム色。** 暗い背景むけの白文字にしていたせいで、
+   文字が地に溶けて「空っぽのボタン」に見えていた */
 .th-share.th-share-alt {
-  background: rgba(255, 254, 242, 0.14);
-  color: rgba(255, 254, 242, 0.92);
-  border: 1px solid rgba(255, 254, 242, 0.28);
-  font-weight: 700;
+  background: rgba(43, 38, 32, 0.07);
+  color: #4a4438;
+  border: 1.5px solid rgba(43, 38, 32, 0.22);
+  box-shadow: none;
+  font-weight: 800;
 }

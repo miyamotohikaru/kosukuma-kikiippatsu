@@ -151,7 +151,7 @@ export function SwordPreview() {
                   className={CHARMS[i]?.secret ? "secret" : undefined}
                   title={CHARMS[i]?.name}
                 >
-                  <CharmIcon index={i} size={26} />
+                  <CharmIcon index={i} size={24} />
                 </li>
               ))}
             </ul>

@@ -281,12 +281,12 @@ const D_CORE = (() => {
  * 鍔は viewBox の幅ほぼいっぱい(41.4 / 44)なので、写真のように
  * 刃のよこへ房を垂らす余地がもともと無い。**房があるときだけ**右へ足す。
  */
-const CHARM_ROOM = 11;
+const CHARM_ROOM = 16;
 
 const CHARM_X = BOSS_DX;
 const CHARM_TOP = GUARD_CY + BOSS_R * 0.6;
 /** 割りカン。ここから房が分かれる */
-const RING_R = 3;
+const RING_R = 3.4;
 const RING_CY = CHARM_TOP + RING_R + 0.4;
 
 /**
@@ -296,9 +296,11 @@ const RING_CY = CHARM_TOP + RING_R + 0.4;
  * 「ぶら下がっている」ように見えなくなる。
  */
 function charmPack(n: number) {
-  if (n <= 3) return { cols: 1, r: 3.2, colGap: 0, rowGap: 6 };
-  if (n <= 6) return { cols: 2, r: 3.1, colGap: 6.2, rowGap: 5.2 };
-  return { cols: 3, r: 3.05, colGap: 6, rowGap: 4.7 };
+  // 実物のキーホルダーはチャームが大きく、たがいに重なっている。
+  // 小さく離すと「粒が並んでいる」だけで、集めた重みが出ない
+  if (n <= 3) return { cols: 1, r: 4.4, colGap: 0, rowGap: 6.4 };
+  if (n <= 6) return { cols: 2, r: 4.2, colGap: 7.6, rowGap: 5.6 };
+  return { cols: 3, r: 4, colGap: 7.2, rowGap: 5 };
 }
 
 interface CharmBead {
