@@ -1,106 +1,171 @@
 "use client";
 
-// 直近の刺しイベントのフィード(最新4件)。左下に流れる。
+// 左下のチャット欄。**ここに出るのはみんなが書いたコメントだけ。**
+// 月で起きたこと(だれが刺したか)は右上の通知(StabNotice)が受け持つ。
+// 同じ箱に混ぜていた時期もあったが、読むもの(コメント)と
+// 流し見するもの(刺しの記録)が同居すると、どちらも読みにくくなる。
 //
-// ねらいは「いま、世界で何が起きたか」が読めること。同じ文言が4行ならぶと
-// 動いていないように見えるので、1行ごとに違いを出す:
-//   ・国旗(どこの人か) ・穴の番号(どの穴か) ・経過時間(どれくらい前か)
-//   ・名前を登録した人は「〇〇が 刺した」。ここに人の名前が出るだけで、
-//     同じ「だれかが」の行列より、ずっと人がいる感じになる
-//   ・自分の刺しは「きみ」、当たりは金色
-//   ・いま剣が降ってきている最中の行(`store.remoteStabs`)は光らせて、
-//     3Dで降ってくる剣とフィードを対応させる
+// 並びはYouTubeのライブと同じで**新しいものが下**。いちばん下が入力欄なので、
+// 書いた自分のコメントがそのすぐ上に出てくる = 送れたことがその場で分かる。
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { CHAT_MAX_LEN, FEED_ROWS } from "@/lib/config";
 import { useGameStore } from "@/game/store";
+import { agoLabel, flagEmoji } from "./feedText";
 import "./ui.css";
 
-/** ISO 3166-1 alpha-2 → 国旗絵文字。不明・不正なら 🌍 */
-function flagEmoji(country: string | null): string {
-  if (!country || country.length !== 2) return "🌍";
-  const up = country.toUpperCase();
-  const a = up.charCodeAt(0) - 65;
-  const b = up.charCodeAt(1) - 65;
-  if (a < 0 || a > 25 || b < 0 || b > 25) return "🌍";
-  return String.fromCodePoint(0x1f1e6 + a, 0x1f1e6 + b);
+/**
+ * スマホのソフトキーボードぶん、チャット欄を持ち上げる。
+ * これが無いと、書いている本文がキーボードの裏に隠れて何も見えなくなる。
+ * (HUDは position:absolute なので、ページのスクロールでは逃げられない)
+ */
+function useKeyboardLift(active: boolean) {
+  useEffect(() => {
+    const vv = typeof window === "undefined" ? null : window.visualViewport;
+    const root = document.documentElement;
+    if (!vv) return;
+    const apply = () => {
+      const lift = active
+        ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+        : 0;
+      root.style.setProperty("--kk-kb", `${Math.round(lift)}px`);
+    };
+    apply();
+    vv.addEventListener("resize", apply);
+    vv.addEventListener("scroll", apply);
+    return () => {
+      vv.removeEventListener("resize", apply);
+      vv.removeEventListener("scroll", apply);
+      root.style.setProperty("--kk-kb", "0px");
+    };
+  }, [active]);
 }
 
-/** どれくらい前か。サーバーと時計がずれて未来になっても「いま」に丸める */
-function agoLabel(at: string, now: number): string {
-  const ms = now - Date.parse(at);
-  if (!Number.isFinite(ms)) return "";
-  if (ms < 8000) return "いま";
-  const sec = Math.floor(ms / 1000);
-  if (sec < 60) return `${sec}びょう前`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}ふん前`;
-  const hour = Math.floor(min / 60);
-  if (hour < 24) return `${hour}じかん前`;
-  return `${Math.floor(hour / 24)}にち前`;
+interface FeedProps {
+  /** 「ぜんぶ みる」を押したとき。コメントの一覧をひらく */
+  onOpenLog: () => void;
 }
 
-/** 「いま起きたばかり」とみなす時間(ms)。この行は薄めない */
-const FRESH_MS = 6000;
+export default function Feed({ onOpenLog }: FeedProps) {
+  const chat = useGameStore((s) => s.chat);
+  const sendChat = useGameStore((s) => s.sendChat);
+  const sending = useGameStore((s) => s.chatSending);
 
-export default function Feed() {
-  const recent = useGameStore((s) => s.recent);
-  const myStabs = useGameStore((s) => s.myStabs);
-  const remoteStabs = useGameStore((s) => s.remoteStabs);
-
-  // 経過時間の表示を進めるための時計。1秒ごとの、4行だけの軽い再描画
+  // 「○ふん前」を進めるための時計。数行だけの軽い再描画
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  const items = recent.slice(0, 4);
-  if (items.length === 0) return null;
+  const [text, setText] = useState("");
+  const [focused, setFocused] = useState(false);
+  const composing = useRef(false);
+  useKeyboardLift(focused);
+
+  // store は新しい順に持っている。表示は「新しいものが下」なのでひっくり返す。
+  // **見えるのは FEED_ROWS 行ぶんだけで、中身は全部入っている**(指でさかのぼれる)
+  const rows = [...chat].reverse();
+
+  // ── いちばん下に貼りつく ──
+  // 新しいコメントが来たら下へ送る。ただし**さかのぼって読んでいる最中は
+  // 動かさない**(読んでいる途中で勝手に飛ばされるのがいちばん困る)。
+  const listRef = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+  const onScroll = () => {
+    const el = listRef.current;
+    if (!el) return;
+    stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+  };
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    if (el && stick.current) el.scrollTop = el.scrollHeight;
+  }, [rows.length]);
+
+  const submit = async () => {
+    if (composing.current) return; // 変換中のEnterは確定であって送信ではない
+    const ok = await sendChat(text);
+    if (ok) setText("");
+  };
 
   return (
-    <div className="feed-wrap">
-      <div className="feed-head" aria-hidden="true">
-        <span className="feed-live-dot" />
-        <span>せかいの ようす</span>
+    <div className={focused ? "feed-wrap is-writing" : "feed-wrap"}>
+      <div className="feed-head">
+        <span className="feed-live-dot" aria-hidden="true" />
+        <span>みんなの コメント</span>
+        {/* 流れていったぶんを読み返す逃し口 */}
+        <button type="button" className="feed-all" onClick={onOpenLog}>
+          ぜんぶ みる
+        </button>
       </div>
-      <div className="feed" aria-live="polite">
-        {items.map((e) => {
-          // いま3Dで降ってきている最中か(当たりの行は金色を優先するので除く)
-          const falling =
-            !e.win && remoteStabs.some((r) => r.holeId === e.holeId);
-          const mine = !e.win && myStabs.includes(e.holeId);
-          const fresh = now - Date.parse(e.at) < FRESH_MS;
 
-          const cls = ["feed-row"];
-          if (e.win) cls.push("feed-win");
-          else if (falling) cls.push("feed-live");
-          else if (mine) cls.push("feed-mine");
-          if (fresh || falling) cls.push("feed-fresh");
-
-          // 名前があれば、自分の行でもそれを主語にする。
-          // 自分だけ「きみ」にしていたら、名前が残っているのかどうかが
-          // 分からなかった。どれが自分かは行の色で分かる
-          const who = e.name || (mine ? "きみ" : null);
-          const text = e.win
-            ? "あたりを ひいた！！"
-            : falling
-              ? "いま 刺してる…"
-              : who
-                ? `${who}が 刺した`
-                : "だれかが 刺した";
-
-          return (
-            <div key={`${e.at}-${e.holeId}`} className={cls.join(" ")}>
+      <div
+        className="feed"
+        aria-live="polite"
+        ref={listRef}
+        onScroll={onScroll}
+        style={{ ["--feed-rows" as string]: FEED_ROWS }}
+      >
+        {rows.length === 0 ? (
+          <p className="feed-empty">
+            まだ 何も ないよ。さいしょの コメントを かいてみて！
+          </p>
+        ) : (
+          rows.map((m) => (
+            <div
+              key={m.id}
+              className={
+                m.operator ? "feed-row feed-chat is-op" : "feed-row feed-chat"
+              }
+            >
               <span className="feed-flag" aria-hidden="true">
-                {flagEmoji(e.country)}
+                {m.operator ? "📣" : flagEmoji(m.country)}
               </span>
-              <span className="feed-text">{text}</span>
-              <span className="feed-hole">#{e.holeId}</span>
-              <span className="feed-time">{agoLabel(e.at, now)}</span>
+              <span className="feed-name">
+                {m.operator ? "うんえい" : (m.name ?? "だれか")}
+              </span>
+              <span className="feed-body">{m.body}</span>
+              <span className="feed-time">{agoLabel(m.at, now)}</span>
             </div>
-          );
-        })}
+          ))
+        )}
       </div>
+
+      {/* 入力欄。いちばん下に置くので、書いたものが真上に出てくる */}
+      <form
+        className="chat-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
+        <input
+          className="chat-input"
+          type="text"
+          inputMode="text"
+          autoComplete="off"
+          maxLength={CHAT_MAX_LEN}
+          placeholder="コメントする"
+          aria-label="コメントする"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onCompositionStart={() => {
+            composing.current = true;
+          }}
+          onCompositionEnd={() => {
+            composing.current = false;
+          }}
+        />
+        <button
+          type="submit"
+          className="chat-send"
+          disabled={sending || text.trim().length === 0}
+        >
+          {sending ? "…" : "おくる"}
+        </button>
+      </form>
     </div>
   );
 }

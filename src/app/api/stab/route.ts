@@ -4,14 +4,16 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import {
+  CHARMS,
   HOLE_COUNT,
+  MAX_EQUIPPED_CHARMS,
   NORMAL_CHARM_COUNT,
   SKY_KINDS,
   SWORD_COLORS,
   SWORD_SKINS,
 } from "@/lib/config";
 import { maskToBase64 } from "@/lib/bitmask";
-import { packStyle } from "@/lib/style";
+import { packCharmSet, packStyle } from "@/lib/style";
 import type { StabRequest, StabResult } from "@/lib/types";
 import { getStore } from "@/server/store";
 import { sanitizeName } from "@/server/names";
@@ -46,6 +48,19 @@ function parseBody(v: unknown): StabRequest | null {
   const charm = inRange(o.charm, NORMAL_CHARM_COUNT + 1);
   const earthCharm = o.earthCharm === true;
   const skyCharms = inRange(o.skyCharms, 1 << SKY_KINDS.length) ?? 0;
+  // つけていたチャームの一覧。知らない番号は捨て、上限(MAX_EQUIPPED_CHARMS)も
+  // ここで切る。クライアントを信用して長い房を月に残させない
+  const charms = Array.isArray(o.charms)
+    ? (o.charms as unknown[])
+        .filter(
+          (v): v is number =>
+            typeof v === "number" &&
+            Number.isInteger(v) &&
+            v >= 0 &&
+            v < CHARMS.length,
+        )
+        .slice(0, MAX_EQUIPPED_CHARMS)
+    : undefined;
   // ニックネームは世界中の画面に出るので、トロフィー名と同じ検閲を通す。
   // 弾かれたときはエラーにせず「名無し」に落とす(刺し自体は成立させる)
   const nickname =
@@ -64,6 +79,7 @@ function parseBody(v: unknown): StabRequest | null {
     charm,
     earthCharm,
     skyCharms,
+    charms,
     nickname,
   };
 }
@@ -109,6 +125,8 @@ export async function POST(req: Request): Promise<NextResponse> {
               body.skyCharms ?? 0,
             )
           : null,
+      // 「どれをつけたか」は数では表せないので、一覧そのものを別の列へ
+      charms: body.charms ? packCharmSet(body.charms) : null,
       nickname: body.nickname ?? null,
     });
 

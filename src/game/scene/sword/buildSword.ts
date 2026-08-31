@@ -384,9 +384,46 @@ const IRIDESCENT_CHUNK = /* glsl */ `
 	{
 		vec3 iriView = normalize( vViewPosition );
 		float iriEdge = 1.0 - abs( dot( normalize( normal ), iriView ) );
-		float iriHue = fract( iriEdge * 1.15 + uIriTime * 0.045 );
+		float iriHue = fract( iriEdge * 1.15 + uSwordTime * 0.045 );
 		vec3 iriColor = 0.5 + 0.5 * cos( 6.28318 * ( iriHue + vec3( 0.0, 0.33, 0.67 ) ) );
 		diffuseColor.rgb = mix( diffuseColor.rgb, iriColor, 0.92 );
+	}
+`;
+
+// ── きらめき ────────────────────────────────────────
+// ぎん・きんは「色が違うだけの剣」に見えて、他の人の画面ではノーマルと
+// 区別がつかなかった。原因は、このシーンに環境マップが無いこと。
+// 金属や宝石を金属らしく見せているのは **動く反射** なので、
+// 環境マップの代わりに「刃を根元から先へ流れる細い光の帯」を自前で足す。
+//
+// 帯の位相は剣ごとにずらす(1000本が同時に光ると、画面全体が明滅して
+// 何が起きたのか分からなくなる)。位相は刺さっている場所から作るので、
+// 誰の画面でも同じ剣が同じタイミングで光る。
+const SPARKLE_VERTEX_CHUNK = /* glsl */ `
+	vSparkleY = position.y;
+	#ifdef USE_INSTANCING
+		vSparkleSeed = fract( sin( dot( instanceMatrix[ 3 ].xyz, vec3( 12.9898, 78.233, 37.719 ) ) ) * 43758.5453 );
+	#else
+		vSparkleSeed = 0.0;
+	#endif
+`;
+
+const SPARKLE_CHUNK = /* glsl */ `
+	{
+		// 刃を上へ流れる細い帯。pow でとがらせて「すっと通る光」にする
+		// 帯は2本。速さも幅も向きも変えて重ねると、規則正しい明滅ではなく
+		// 「ときどき ぎらっと来る」金属の見え方になる。1本だと呼吸に見える
+		float sparkB1 = sin( vSparkleY * 9.0 - uSwordTime * 2.4 + vSparkleSeed * 6.28318 );
+		float sparkB2 = sin( vSparkleY * 17.0 + uSwordTime * 1.5 + vSparkleSeed * 11.0 );
+		float sparkGlint =
+			pow( max( sparkB1, 0.0 ), 13.0 ) + 0.7 * pow( max( sparkB2, 0.0 ), 26.0 );
+		// ふちほど強い(金属の反射は輪郭に出る)。まん中だけ光ると板に見える
+		float sparkRim = 1.0 - abs( dot( normalize( normal ), normalize( vViewPosition ) ) );
+		// 帯が来ていないあいだも、ふちだけは常に明るくしておく。
+		// これが無いと「ときどき光るだけのプラスチック」になって金属に見えない
+		float sparkSheen = pow( sparkRim, 3.0 ) * 0.55;
+		float sparkK = uSparkle * ( sparkGlint * ( 0.6 + 1.5 * sparkRim ) + sparkSheen );
+		totalEmissiveRadiance += mix( vec3( 1.0 ), diffuseColor.rgb, 0.22 ) * sparkK;
 	}
 `;
 
@@ -419,7 +456,9 @@ export function makeSwordMaterial(
   // このシーンには環境マップが無いので metalness=1 の面は真っ黒になる。
   // 「玩具の金属色」として読める範囲まで金属感を落とし、そのぶん自発光で起こす
   const metalness = Math.min(skin.metalness, 0.6);
-  const emissiveK = Math.max(skin.emissive, skin.metalness * 0.28);
+  // 金属は地の明るさも上げておく。きらめきが来ていないコマで暗く沈むと、
+  // 「ときどき光る灰色の剣」になってしまう
+  const emissiveK = Math.max(skin.emissive, skin.metalness * 0.36);
 
   const mat = new THREE.MeshPhysicalMaterial({
     color: hex,
@@ -437,31 +476,48 @@ export function makeSwordMaterial(
   });
 
   const uSwordEmissive = { value: emissiveK };
-  const uIriTime = { value: 0 };
-  if (skin.iridescent) mat.userData.iriTime = uIriTime;
+  const uSwordTime = { value: 0 };
+  const uSparkle = { value: skin.sparkle ?? 0 };
+  const animated = skin.iridescent || (skin.sparkle ?? 0) > 0;
+  // 毎フレーム時計を進めてほしいスキンだけ、更新先を userData に置いておく
+  if (animated) mat.userData.iriTime = uSwordTime;
 
+  const sparkly = (skin.sparkle ?? 0) > 0;
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uSwordEmissive = uSwordEmissive;
-    if (skin.iridescent) shader.uniforms.uIriTime = uIriTime;
+    if (animated) shader.uniforms.uSwordTime = uSwordTime;
+    if (sparkly) {
+      shader.uniforms.uSparkle = uSparkle;
+      shader.vertexShader =
+        `varying float vSparkleY;\nvarying float vSparkleSeed;\n` +
+        shader.vertexShader.replace(
+          "#include <begin_vertex>",
+          `#include <begin_vertex>\n` + SPARKLE_VERTEX_CHUNK
+        );
+    }
     shader.fragmentShader =
       `uniform float uSwordEmissive;\n` +
-      (skin.iridescent ? `uniform float uIriTime;\n` : "") +
+      (animated ? `uniform float uSwordTime;\n` : "") +
+      (sparkly
+        ? `uniform float uSparkle;\nvarying float vSparkleY;\nvarying float vSparkleSeed;\n`
+        : "") +
       shader.fragmentShader.replace(
         "#include <normal_fragment_maps>",
         // normal と diffuseColor が両方そろっている場所へ差し込む
         `#include <normal_fragment_maps>\n` +
           (skin.iridescent ? IRIDESCENT_CHUNK : "") +
+          (sparkly ? SPARKLE_CHUNK : "") +
           SELF_EMISSIVE_CHUNK
       );
   };
   // 差し込む中身がスキンで変わるので、プログラムキャッシュを分ける
   mat.customProgramCacheKey = () =>
-    `toy-sword-${skin.iridescent ? "iri" : "solid"}`;
+    `toy-sword-${skin.iridescent ? "iri" : "solid"}-${sparkly ? "spk" : "flat"}`;
 
   return mat;
 }
 
-/** にじいろの色相をすすめる(毎フレーム呼ぶ)。他のスキンでは何もしない */
+/** にじいろ・きらめきの時計をすすめる(毎フレーム呼ぶ)。他のスキンでは何もしない */
 export function tickSwordMaterial(mat: THREE.Material, t: number): void {
   const u = mat.userData.iriTime as { value: number } | undefined;
   if (u) u.value = t;
@@ -589,13 +645,10 @@ export interface ToySword {
 //   3. 深いものほど「刃から離れる向き」へ開く。輪の内側に下げたぶんは余分に開く
 //   4. 背の高いチャーム(タッセル・ネームプレート)は浅いところへ逃がして、
 //      月面へめり込ませない
-// 5個以上になったら鍔の反対のはしにも房を作って左右に振り分ける
-// (片側に13個ぶら下げると、剣より房のほうが大きくなってしまう)。
-// **左右をわざと同じにしない**(親金具は右だけスナップフック、左は丸カン)のが、
-// 参考写真の「集めているうちに増えた」感じの正体。
-
-/** 左右に振り分けはじめる個数 */
-const CHARM_SPLIT_AT = 5;
+// **房は鍔の片はし(右)にひとつだけ。** 一時期は5個以上で左右に振り分けて
+// いたが、参考写真のキーホルダーは片側の割りカン1つに全部が下がっている。
+// 左右に散らすと、剣を持つ道具ではなく「両側に飾りが付いた置物」に見える。
+// つけられるのは10個までなので、片側でも房が剣より大きくなることはない。
 /** チャーム1個の大きさ(いちばん長い辺)。数が多いほど少し小ぶりにする */
 const CHARM_SIZE_MAX = 0.088;
 const CHARM_SIZE_MIN = 0.06;
@@ -1082,7 +1135,7 @@ function layoutCharms(
   list: number[],
   builds: CharmBuild[]
 ): { spots: CharmSpot[]; clusters: CharmCluster[] } {
-  const sides = list.length >= CHARM_SPLIT_AT ? [1, -1] : [1];
+  const sides = [1];
   // 割りカンの大きさは「その房に何個下がるか」で決まるので、まず数だけ数える
   const counts = sides.map((_, si) =>
     list.reduce((a, _c, i) => a + (i % sides.length === si ? 1 : 0), 0)

@@ -11,9 +11,8 @@
 import { useEffect, useMemo } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
-import { charmLevelOf, T_STAB } from "@/lib/config";
-import { charmIndicesFrom } from "@/lib/style";
-import { useGameStore } from "@/game/store";
+import { charmLevelOf, MAX_EQUIPPED_CHARMS, T_STAB } from "@/lib/config";
+import { ownedCharms, useGameStore } from "@/game/store";
 import { getHoleWorld } from "@/game/scene/sharedRefs";
 import {
   buildToySword,
@@ -61,13 +60,27 @@ function buildRig(): SwordRig {
   // この1本を数えたあとのチャーム数(10本目の剣には、その場で手に入れた
   // チャームがもうぶら下がっている)。store.confirmStab と同じ計算
   const charm = charmLevelOf(s.myTotal + 1);
+  // **下げるのは「いまつけているチャーム」。** 以前は本数から数えて
+  // 0番から順に下げていたので、外したものが出たり、空でつかまえたものや
+  // つつきのチャームが出なかったりして、したくの剣と別物になっていた。
+  const owned = new Set(
+    ownedCharms(s.myTotal + 1, s.hasEarthCharm, s.caughtSky, s.hasPokeCharm)
+  );
+  const hung = s.equippedCharms
+    .filter((i) => owned.has(i))
+    .slice(0, MAX_EQUIPPED_CHARMS);
+  // この1本でちょうど開くチャームは、まだ「つけている」に入っていない。
+  // 空きがあればその場で下げる(10本目の剣に、その場で増えた1個が下がる)
+  const got = charm > charmLevelOf(s.myTotal) ? charm - 1 : -1;
+  if (got >= 0 && hung.length < MAX_EQUIPPED_CHARMS && !hung.includes(got)) {
+    hung.push(got);
+    hung.sort((a, b) => a - b);
+  }
   const sword = buildToySword({
     color: s.swordColor,
     skin: s.swordSkin,
     charm,
-    // 何を下げるかは charmIndicesFrom が正(隠しチャーム「ちきゅう」は
-    // 刺し本数では表せないので、数ではなく index の配列で渡す)
-    charms: charmIndicesFrom(charm, s.hasEarthCharm),
+    charms: hung,
     scale: HERO_SCALE,
   });
 

@@ -13,14 +13,45 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
+import { OrbitControls } from "@react-three/drei";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { TrophiesResponse, TrophyRecord } from "@/lib/types";
 import { mulberry32, pick, randInt } from "@/lib/prng";
 import { getTrophyParams, TROPHY_HEIGHT } from "@/lib/trophy";
+import { loadMyRounds } from "@/game/store";
 import TrophyMesh from "@/game/trophy/TrophyMesh";
 import "./trophies.css";
 
 const PER_PAGE = 8;
+
+/**
+ * 最後のページに残す「はじまりの3人」。
+ * 第1〜3代だけは、ほかと混ぜずに3体で1ページにする。
+ * いちばん最初にこすくまくんをとばした3人なので、そこだけ特別扱いにしたい。
+ */
+const FIRST_THREE = 3;
+
+interface PageRange {
+  offset: number;
+  limit: number;
+}
+
+/**
+ * ページの切り方。新しい順に8体ずつ並べ、**いちばん最後のページだけ**
+ * 第1〜3代の3体にする(その手前のページが短くなることはある)。
+ */
+function pageRanges(total: number): PageRange[] {
+  if (total <= 0) return [{ offset: 0, limit: PER_PAGE }];
+  if (total <= FIRST_THREE) return [{ offset: 0, limit: total }];
+  const rest = total - FIRST_THREE;
+  const out: PageRange[] = [];
+  for (let o = 0; o < rest; o += PER_PAGE) {
+    out.push({ offset: o, limit: Math.min(PER_PAGE, rest - o) });
+  }
+  out.push({ offset: rest, limit: FIRST_THREE });
+  return out;
+}
 /** カメラの垂直画角(<Canvas> の fov と必ずそろえる) */
 const HALL_FOV = 42;
 
@@ -40,8 +71,14 @@ interface StandSpot {
   top: number;
 }
 
-/** 画面のアスペクト比から、横にならべる数を決める */
-function colsForAspect(aspect: number): number {
+/**
+ * 画面のアスペクト比から、横にならべる数を決める。
+ * ただし**3体までは、せまい画面でも必ず横一列**にする。
+ * 2列にすると3体目だけが奥へ下がって小さくなり、「3人しかいないのに2段」で
+ * 寂しく見えていた(いまは指で寄れるので、小さく出ても追いかけられる)。
+ */
+function colsForAspect(aspect: number, count: number): number {
+  if (count > 0 && count <= 3) return count;
   if (aspect >= 1.25) return 4; // PC・タブレット横
   if (aspect >= 0.82) return 3; // ほぼ正方形
   return 2; // スマホ縦
@@ -616,7 +653,11 @@ function TrophyStand({ item, spot, selected, onPick }: StandProps) {
 
       {/* トロフィー(ゆっくり回転) */}
       <group ref={spinRef} position={[0, top, 0]} scale={0.9}>
-        <TrophyMesh roundNo={item.roundNo} name={item.name} />
+        <TrophyMesh
+          roundNo={item.roundNo}
+          name={item.name}
+          version={item.trophyV ?? 1}
+        />
       </group>
 
       {/* ラベル「第N代 {name}」。台座の上の方に貼り、ぐるっと回ってカメラを向く */}
@@ -646,18 +687,28 @@ function TrophyStand({ item, spot, selected, onPick }: StandProps) {
   );
 }
 
-/** 選択に合わせてゆったり寄る/戻るカメラ */
+/**
+ * 選択に合わせてゆったり寄る/戻るカメラ。
+ * **指で動かしはじめたら、こちらは手を引く。** 自動で戻し続けると、
+ * 回そうとしても押し返されて「動かせない」と感じてしまう。
+ * 手を戻すのは、別のトロフィーを選んだときと「いちからみる」を押したとき。
+ */
 function HallCamera({
   home,
   focus,
+  controls,
+  manual,
 }: {
   home: HallHome;
   focus: StandSpot | null;
+  controls: React.RefObject<OrbitControlsImpl | null>;
+  manual: React.RefObject<boolean>;
 }) {
   const tmpPos = useMemo(() => new THREE.Vector3(), []);
   const tmpTgt = useMemo(() => new THREE.Vector3(), []);
   const curTgt = useRef(new THREE.Vector3(0, home.targetY, home.targetZ));
   useFrame(({ camera, clock }, dt) => {
+    if (manual.current) return; // 指で動かしている間は OrbitControls にまかせる
     const t = clock.getElapsedTime();
     if (focus) {
       // せまい画面は少し引き、被写体が画面の上半分にくるよう下を狙う
@@ -675,7 +726,15 @@ function HallCamera({
     const k = 1 - Math.exp(-3 * Math.min(dt, 0.1));
     camera.position.lerp(tmpPos, k);
     curTgt.current.lerp(tmpTgt, k);
-    camera.lookAt(curTgt.current);
+    // 注視点は OrbitControls と共有する。ここでズラしておかないと、
+    // 指で動かしはじめた瞬間に画がガクッと飛ぶ
+    const c = controls.current;
+    if (c) {
+      c.target.copy(curTgt.current);
+      c.update();
+    } else {
+      camera.lookAt(curTgt.current);
+    }
   });
   return null;
 }
@@ -706,6 +765,12 @@ function flagEmoji(cc: string | null): string {
 
 export default function TrophyHall() {
   const [page, setPage] = useState(1);
+  // この端末がとばした代。ゲーム側が localStorage に残している
+  const [myRounds, setMyRounds] = useState<number[]>([]);
+  const [shared, setShared] = useState(false);
+  useEffect(() => setMyRounds(loadMyRounds()), []);
+  // 総数が分かるまでは1ページぶんだけ取りにいく(1ページ目は必ず offset 0)
+  const [knownTotal, setKnownTotal] = useState(0);
   const [data, setData] = useState<TrophiesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -746,6 +811,16 @@ export default function TrophyHall() {
     [demoCount]
   );
 
+  const ranges = useMemo(
+    () => pageRanges(demoCount !== null ? demoCount : knownTotal),
+    [demoCount, knownTotal],
+  );
+  const range = ranges[page - 1] ?? ranges[0];
+  // 総数が分かってページが減ったら、はみ出した位置から戻す
+  useEffect(() => {
+    if (page > ranges.length) setPage(ranges.length);
+  }, [ranges.length, page]);
+
   useEffect(() => {
     if (!urlRead) return;
     if (demoCount !== null) {
@@ -757,7 +832,7 @@ export default function TrophyHall() {
     let alive = true;
     setLoading(true);
     setFailed(false);
-    fetch(`/api/trophies?perPage=${PER_PAGE}&page=${page}`)
+    fetch(`/api/trophies?offset=${range.offset}&limit=${range.limit}`)
       .then((r) => {
         if (!r.ok) throw new Error(String(r.status));
         return r.json() as Promise<TrophiesResponse>;
@@ -765,6 +840,7 @@ export default function TrophyHall() {
       .then((d) => {
         if (!alive) return;
         setData(d);
+        setKnownTotal(d.total);
         setLoading(false);
       })
       .catch(() => {
@@ -775,26 +851,26 @@ export default function TrophyHall() {
     return () => {
       alive = false;
     };
-  }, [page, retry, urlRead, demoCount]);
+  }, [range.offset, range.limit, retry, urlRead, demoCount]);
 
   // デモならダミーを、そうでなければAPIの結果をそのまま使う
   const view: TrophiesResponse | null = useMemo(() => {
     if (!demoAll) return data;
-    const start = (page - 1) * PER_PAGE;
     return {
       total: demoAll.length,
-      page,
-      perPage: PER_PAGE,
-      items: demoAll.slice(start, start + PER_PAGE),
+      offset: range.offset,
+      limit: range.limit,
+      items: demoAll.slice(range.offset, range.offset + range.limit),
     };
-  }, [demoAll, data, page]);
+  }, [demoAll, data, range.offset, range.limit]);
 
   const items = useMemo(() => view?.items ?? [], [view]);
   const total = view?.total ?? 0;
-  const perPage = view?.perPage ?? PER_PAGE;
-  const maxPage = Math.max(1, Math.ceil(total / perPage));
+  const maxPage = ranges.length;
+  // いちばん最後のページ = 第1〜3代だけの「はじまりの3人」
+  const isFirstThree = total > FIRST_THREE && page === maxPage;
 
-  const cols = colsForAspect(aspect);
+  const cols = colsForAspect(aspect, items.length);
   const spots = useMemo(
     () => layoutStands(items.length, cols),
     [items.length, cols]
@@ -804,7 +880,53 @@ export default function TrophyHall() {
   const sel: TrophyRecord | undefined =
     selected !== null ? items[selected] : undefined;
   const focus = selected !== null && sel ? (spots[selected] ?? null) : null;
-  const selRare = sel ? getTrophyParams(sel.roundNo, sel.name).rare : false;
+  const selRare = sel
+    ? getTrophyParams(sel.roundNo, sel.name, sel.trophyV ?? 1).rare
+    : false;
+
+  // 指で動かしたかどうか。動かしたら自動カメラは手を引く
+  const controls = useRef<OrbitControlsImpl | null>(null);
+  const manual = useRef(false);
+  const resetView = () => {
+    manual.current = false;
+  };
+  // 別のトロフィーを選び直したら、自動カメラに戻す(選んだのに寄らないと変)
+  useEffect(() => {
+    manual.current = false;
+  }, [selected, page]);
+
+  /**
+   * トロフィーを外へ出す。
+   * 端末のシェアシートがあればそれ(LINEにもXにも出せる)、
+   * 無ければ文をコピーする。
+   *
+   * **自分のと人のとで文を変える。** 同じ「とばしました」で人のトロフィーを
+   * 流せてしまうと、この殿堂の意味がなくなる。
+   */
+  const shareTrophy = async (t: TrophyRecord, mine: boolean) => {
+    const url =
+      typeof window === "undefined" ? "" : `${window.location.origin}/trophies`;
+    const text = mine
+      ? `こすくまくん危機一髪で、第${t.roundNo}代 こすくまくんを 宇宙へ とばしました！` +
+        ` 名前はトロフィーに刻まれて ずっと残ります 🏆⚔️🌙`
+      : `こすくまくん危機一髪の 第${t.roundNo}代を とばしたのは ${t.name}。` +
+        ` トロフィーに名前が刻まれています 🏆⚔️🌙`;
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({ text, url });
+        return;
+      } catch {
+        /* 閉じただけ。何も言わない */
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(`${text}\n${url}`);
+      setShared(true);
+      setTimeout(() => setShared(false), 2400);
+    } catch {
+      /* コピーもできない環境では何もしない(ボタンはそのまま) */
+    }
+  };
 
   const goPage = (p: number) => {
     if (p < 1 || p > maxPage) return;
@@ -823,7 +945,10 @@ export default function TrophyHall() {
             near: 0.1,
             far: 90,
           }}
-          onPointerMissed={() => setSelected(null)}
+          onPointerMissed={() => {
+            setSelected(null);
+            resetView();
+          }}
         >
           <color attach="background" args={["#05071a"]} />
           <fog attach="fog" args={["#05071a", 12, 40]} />
@@ -849,7 +974,31 @@ export default function TrophyHall() {
               />
             );
           })}
-          <HallCamera home={home} focus={focus} />
+          <HallCamera
+            home={home}
+            focus={focus}
+            controls={controls}
+            manual={manual}
+          />
+          {/* 指で まわす・寄る。宇宙の月と同じ手ざわりにそろえる。
+              平行移動は切る(横へ流れると、二度と戻れなくなる) */}
+          <OrbitControls
+            ref={controls}
+            makeDefault
+            enablePan={false}
+            enableDamping
+            dampingFactor={0.09}
+            rotateSpeed={0.7}
+            zoomSpeed={0.8}
+            minDistance={0.9}
+            maxDistance={home.camZ + 8}
+            /* 床下へ潜らせない・真上から見下ろさせない */
+            minPolarAngle={0.12}
+            maxPolarAngle={Math.PI * 0.495}
+            onStart={() => {
+              manual.current = true;
+            }}
+          />
         </Canvas>
       </div>
 
@@ -865,6 +1014,10 @@ export default function TrophyHall() {
         <p className="th-sub">
           これまでに <b>{total.toLocaleString("ja-JP")}</b> 人が とばした
         </p>
+        {/* 最後のページだけは第1〜3代。ここだけ別の場所だと分かるようにする */}
+        {isFirstThree && (
+          <p className="th-firstthree">✦ はじまりの 3人 ✦</p>
+        )}
       </header>
 
       {demoCount !== null && (
@@ -938,6 +1091,25 @@ export default function TrophyHall() {
               <dd>{sel.stabCount.toLocaleString("ja-JP")}回</dd>
             </div>
           </dl>
+          {/* どのトロフィーもシェアできる。ただし**自分のだけ「じまん」**で、
+              人のは「見て」の紹介。文も変える(手柄の横取りにしない) */}
+          {myRounds.includes(sel.roundNo) ? (
+            <button
+              type="button"
+              className="th-btn th-share"
+              onClick={() => void shareTrophy(sel, true)}
+            >
+              {shared ? "コピーした！" : "🏆 これを じまんする"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="th-btn th-share th-share-alt"
+              onClick={() => void shareTrophy(sel, false)}
+            >
+              {shared ? "コピーした！" : "このトロフィーを シェアする"}
+            </button>
+          )}
         </div>
       )}
 
@@ -954,6 +1126,19 @@ export default function TrophyHall() {
           <span className="th-page-no">
             {page} / {maxPage}
           </span>
+          {/* 指でまわして迷子になったときの帰り道。
+              いつでも出しておく(困ってから探すものなので、隠さない) */}
+          <button
+            type="button"
+            className="th-btn th-btn-reset"
+            onClick={() => {
+              setSelected(null);
+              resetView();
+            }}
+            aria-label="ぜんたいを みる"
+          >
+            ⤢
+          </button>
           <button
             type="button"
             className="th-btn"

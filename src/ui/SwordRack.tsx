@@ -5,14 +5,19 @@
 //
 // - SwordPreview  : いま選んでいる1本の完成形(したく引き出しのいちばん上)
 // - SwordRack     : 8色の剣ラック(確認シート/したく引き出しの両方で使う)
-// - SkinRack      : 仕上げ(プラスチック/ぎん/きん/クリスタル/にじいろ)の陳列棚
+// - SkinRack      : 仕上げ(ノーマル/ぎん/きん/クリスタル/にじいろ)の陳列棚
 // - SkinUnlockCard: とばした人へのスキン解放のお祝い(trophyフェーズ)
 //
 // 剣の絵は SwordArt(インラインSVG)。ラックの木/樹脂の厚み・スロットの穴・
 // 落ち影は CSS で作っていて、剣先はラックの前板に隠れる = 挿さって見える。
 
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { CHARMS, SWORD_COLORS, SWORD_SKINS } from "@/lib/config";
+import {
+  CHARMS,
+  MAX_EQUIPPED_CHARMS,
+  SWORD_COLORS,
+  SWORD_SKINS,
+} from "@/lib/config";
 import { ownedCharms, useGameStore, unlockedSkins } from "@/game/store";
 import SwordArt, { effectiveHex } from "./SwordArt";
 import { CharmDisc, CharmIcon } from "./CharmShelf";
@@ -28,11 +33,16 @@ export function useEquippedCharms(): number[] {
   const myTotal = useGameStore((s) => s.myTotal);
   const hasEarth = useGameStore((s) => s.hasEarthCharm);
   const caughtSky = useGameStore((s) => s.caughtSky);
+  const hasPoke = useGameStore((s) => s.hasPokeCharm);
   const equipped = useGameStore((s) => s.equippedCharms);
   return useMemo(() => {
-    const has = new Set(ownedCharms(myTotal, hasEarth, caughtSky));
-    return equipped.filter((i) => has.has(i)).sort((a, b) => a - b);
-  }, [equipped, myTotal, hasEarth, caughtSky]);
+    const has = new Set(ownedCharms(myTotal, hasEarth, caughtSky, hasPoke));
+    // 端末に残った設定が上限より長いことがあるので、ここでも必ず切る
+    return equipped
+      .filter((i) => has.has(i))
+      .sort((a, b) => a - b)
+      .slice(0, MAX_EQUIPPED_CHARMS);
+  }, [equipped, myTotal, hasEarth, caughtSky, hasPoke]);
 }
 
 /** 選んでいない剣にはチャームを付けない。毎回 [] を作ると無駄に描き直すので固定 */
@@ -84,8 +94,9 @@ export function SwordPreview() {
   const myStabs = useGameStore((s) => s.myStabs);
   const hasEarth = useGameStore((s) => s.hasEarthCharm);
   const caughtSky = useGameStore((s) => s.caughtSky);
+  const hasPoke = useGameStore((s) => s.hasPokeCharm);
   const hung = useEquippedCharms();
-  const owned = ownedCharms(myTotal, hasEarth, caughtSky).length;
+  const owned = ownedCharms(myTotal, hasEarth, caughtSky, hasPoke).length;
 
   const skin = SWORD_SKINS[swordSkin] ?? SWORD_SKINS[0];
   const colorName = SWORD_COLORS[swordColor]?.name ?? SWORD_COLORS[0].name;
@@ -105,6 +116,7 @@ export function SwordPreview() {
             skin={swordSkin}
             charmIndices={hung}
             charmShapes
+            charmDetail
             cropY={77}
           />
         </span>
@@ -129,6 +141,9 @@ export function SwordPreview() {
         <b className="kk-preview-name">{label}</b>
         {hung.length > 0 ? (
           <>
+            {/* 灰色の丸に入れると、キーホルダーではなく「UIのアイコン」に
+                見えてしまう。上に金具のバーを1本通して、そこから
+                ぶら下がっている並びにする(剣についている姿と同じ読み方) */}
             <ul className="kk-preview-charms">
               {hung.map((i) => (
                 <li
@@ -136,7 +151,7 @@ export function SwordPreview() {
                   className={CHARMS[i]?.secret ? "secret" : undefined}
                   title={CHARMS[i]?.name}
                 >
-                  <CharmIcon index={i} size={20} />
+                  <CharmIcon index={i} size={24} />
                 </li>
               ))}
             </ul>
@@ -190,10 +205,13 @@ export function SwordRack() {
                 {/* チャームは「いまつけているぶん」。35px幅では1粒が3px
                     しかないので形では描かず、色つきの丸ビーズの房で見せる
                     (形を見たいときは上のプレビューが引き受ける) */}
+                {/* 写真の陳列と同じで、ラックの剣にもチャームの「形」を
+                    ぶら下げる。35px では細部はつぶれるので輪郭だけ */}
                 <SwordArt
                   color={i}
                   skin={swordSkin}
                   charmIndices={sel ? hung : EMPTY}
+                  charmShapes
                 />
               </span>
             </button>

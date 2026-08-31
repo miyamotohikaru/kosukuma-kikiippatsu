@@ -471,10 +471,11 @@ function beginSlot(slot: Slot, e: RemoteStab, t0: number, soft: boolean): void {
 
   // 見た目(色・スキン・チャーム)。ビーズは Swords と同じ簡略表現にそろえる
   slot.sword.material = swordMaterialFor(slot, e.skin, e.color);
-  if (e.charm > 0) {
+  // ビーズの色は「いちばん新しくつけたチャーム」= 一覧の最後(Swords と同じ約束)
+  if (e.charms.length > 0) {
     slot.bead.visible = true;
     slot.beadMat.color.set(
-      CHARMS[Math.min(e.charm, CHARMS.length) - 1].hex
+      CHARMS[e.charms[e.charms.length - 1]]?.hex ?? CHARMS[0].hex
     );
   } else {
     slot.bead.visible = false;
@@ -551,7 +552,13 @@ export default function RemoteStabs() {
           break;
         }
       }
-      if (!alive) stowSword(s);
+      if (!alive) {
+        // store 側が古い演出を畳んだ場合もここへ来る。playingStabs に穴が
+        // 残ったままだと Swords が永久に描かないので、必ず引き渡しておく
+        const holeId = s.holeId;
+        stowSword(s);
+        useGameStore.getState().endRemoteStab(holeId);
+      }
     }
   }, [remoteStabs, slots]);
 
@@ -589,6 +596,10 @@ export default function RemoteStabs() {
           overdue ? now + late++ * REMOTE_STAGGER : e.startAt,
           soft
         );
+        // ここではじめて Swords に「この穴は描かないで」と伝える。
+        // 順番待ちのあいだも隠していたせいで、混んでいるときや自分の
+        // カットシーン中に、誰も描かない穴(=消えた剣)が生まれていた
+        st.claimRemoteStab(e.holeId);
       }
     }
 

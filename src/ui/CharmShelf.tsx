@@ -34,6 +34,7 @@ import {
 } from "react";
 import {
   CHARMS,
+  MAX_EQUIPPED_CHARMS,
   charmLevelOf,
   NORMAL_CHARM_COUNT,
   type Charm,
@@ -362,8 +363,14 @@ const BEAR_LOBES: BearLobe[] = [
   { round: true, cx: 0.3, cy: -0.145, rx: 0.085, ry: 0.068 },
 ];
 
-/** かたまり1つの輪郭を、24の箱の点列にする */
-function bearPoly(l: BearLobe, n: number): Pt[] {
+/** かたまり1つの輪郭を、24の箱の点列にする(大きさと中心は呼び出し側が決める) */
+function lobePoly(
+  l: BearLobe,
+  n: number,
+  scale: number,
+  ox: number,
+  oy: number,
+): Pt[] {
   const out: Pt[] = [];
   for (let i = 0; i < n; i++) {
     const t = (i / n) * Math.PI * 2;
@@ -381,12 +388,72 @@ function bearPoly(l: BearLobe, n: number): Pt[] {
         Math.sign(c) * Math.abs(c) ** p * l.rx * (1 + (l.taper ?? 0) * s);
       y = l.cy + Math.sign(s) * Math.abs(s) ** p * l.ry;
     }
-    out.push([BEAR_CX + x * BEAR_S, BEAR_CY - y * BEAR_S]);
+    out.push([ox + x * scale, oy - y * scale]);
   }
   return out;
 }
 
+function bearPoly(l: BearLobe, n: number): Pt[] {
+  return lobePoly(l, n, BEAR_S, BEAR_CX, BEAR_CY);
+}
+
 const BEAR_POLYS = BEAR_LOBES.map((l) => bearPoly(l, l.round ? 24 : 44));
+
+// ── こすくまくん ふたり(ねそべり。300本のごほうび) ──────────────
+// 公式ロゴそのままの構図: こちらを向いて寝そべった子の後ろに、
+// 背中を向けたもう1匹が重なっている。横長なので、同じ24の箱でも
+// おすわり1匹より ぐっと大きく描ける = 粒(9px)でも2匹だと分かる。
+//
+// **重なりの順(奥 → 手前)がそのまま線の重なり。** 奥の子の輪郭は、
+// 手前の子に隠れたぶんだけ消える(3Dのインクアウトラインと同じ規則)。
+const LIE_S = 21.3;
+const LIE_CX = 12;
+const LIE_CY = 14.26;
+const LIE_LOBES: BearLobe[] = [
+  // 奥の子(背中を向けている): みみ → からだ
+  { round: true, cx: 0.423, cy: 0.26, rx: 0.075, ry: 0.075 },
+  {
+    round: false,
+    cx: 0.297,
+    cy: -0.017,
+    rx: 0.207,
+    ry: 0.29,
+    pTop: 1,
+    pBot: 1,
+  },
+  // 手前の子: みみ ふたつ → からだ
+  { round: true, cx: -0.39, cy: 0.227, rx: 0.1, ry: 0.1 },
+  { round: true, cx: 0.017, cy: 0.233, rx: 0.1, ry: 0.1 },
+  {
+    round: false,
+    cx: -0.163,
+    cy: 0.017,
+    rx: 0.293,
+    ry: 0.31,
+    pTop: 1,
+    pBot: 1,
+  },
+  // あし: いちばん手前。輪郭がまるごと体の上に出る
+  { round: true, cx: 0.13, cy: -0.24, rx: 0.1, ry: 0.075 },
+  { round: true, cx: -0.117, cy: -0.247, rx: 0.12, ry: 0.073 },
+  { round: true, cx: -0.423, cy: -0.18, rx: 0.057, ry: 0.067 },
+];
+const LIE_POLYS = LIE_LOBES.map((l) =>
+  lobePoly(l, l.round ? 24 : 44, LIE_S, LIE_CX, LIE_CY),
+);
+const LIE_EYE_R = 0.023 * LIE_S;
+const LIE_EYES: Pt[] = [
+  [-0.31, -0.15],
+  [-0.23, -0.143],
+].map(([x, y]) => [LIE_CX + x * LIE_S, LIE_CY - y * LIE_S]);
+/** 鼻: 下向きの小さな三角(3Dは3面のコーンを埋めている) */
+const LIE_NOSE =
+  `M${(LIE_CX - 0.293 * LIE_S).toFixed(2)} ${(LIE_CY + 0.176 * LIE_S).toFixed(2)}` +
+  `L${(LIE_CX - 0.249 * LIE_S).toFixed(2)} ${(LIE_CY + 0.176 * LIE_S).toFixed(2)}` +
+  `L${(LIE_CX - 0.271 * LIE_S).toFixed(2)} ${(LIE_CY + 0.206 * LIE_S).toFixed(2)}Z`;
+/** 奥の子の背中の ほくろ */
+const LIE_MOLE: Pt = [LIE_CX + 0.387 * LIE_S, LIE_CY - 0.073 * LIE_S];
+const LIE_MOLE_R = 0.032 * LIE_S;
 
 function inPoly(pts: Pt[], x: number, y: number): boolean {
   let inside = false;
@@ -413,15 +480,19 @@ function bearBodyD(): string {
   return BEAR_POLYS.map((p) => polyD(p, true)).join("");
 }
 
+function lieBodyD(): string {
+  return LIE_POLYS.map((p) => polyD(p, true)).join("");
+}
+
 /**
  * 線: 手前のかたまりに隠れていない部分だけを残す。
  * 端は二分探索で詰めて、線が手前のパーツのふちでぴたりと止まるようにする
  * (ここを雑にすると、耳の弧が顔の中へ少しはみ出して にじんで見える)。
  */
-function bearInkD(): string {
+function inkD(polys: Pt[][]): string {
   const out: string[] = [];
-  BEAR_POLYS.forEach((pts, li) => {
-    const front = BEAR_POLYS.slice(li + 1);
+  polys.forEach((pts, li) => {
+    const front = polys.slice(li + 1);
     const n = pts.length;
     const seen = (p: Pt) => !front.some((f) => inPoly(f, p[0], p[1]));
     const vis = pts.map(seen);
@@ -458,6 +529,14 @@ function bearInkD(): string {
   return out.join("");
 }
 
+function bearInkD(): string {
+  return inkD(BEAR_POLYS);
+}
+
+function lieInkD(): string {
+  return inkD(LIE_POLYS);
+}
+
 /** 目・口・ほくろ。3D の buildBear と同じ位置(単位空間 → 24の箱) */
 const BEAR_EYE_R = 0.027 * BEAR_S;
 const BEAR_EYES: Pt[] = [-0.073, 0.073].map((x) => [
@@ -478,6 +557,7 @@ const BEAR_MOLE: Pt = [BEAR_CX + 0.188 * BEAR_S, BEAR_CY + 0.325 * BEAR_S];
  */
 const STROKE: Partial<Record<CharmShape, string>> = {
   bear: bearInkD(),
+  bearlie: lieInkD(),
 };
 
 /** ハート: おなじみのハート曲線。ぷっくりさせたいので横に少し広げてある */
@@ -592,6 +672,8 @@ const BODY: Record<CharmShape, string> = {
   tassel: TASSEL_CRIMP + TASSEL_CORDS.join(""),
   // こすくまくん: 全身(みみ・あたま+むね・うで・おなか・あし)の union
   bear: bearBodyD(),
+  // こすくまくん ふたり(ねそべり): 公式ロゴの構図
+  bearlie: lieBodyD(),
   // ちきゅう(隠し): 球 + こわれて飛んだ かけら2つ(3Dの buildEarth と同じ約束)
   earth:
     "M3.8 14a8.2 8.2 0 1 0 16.4 0a8.2 8.2 0 1 0-16.4 0Z" +
@@ -959,6 +1041,40 @@ function accentsOf(c: Charm, detail: boolean, clip: string): ReactNode {
         </>
       );
 
+    case "bearlie":
+      return (
+        <>
+          {/* 太い黒の輪郭線。このキャラクターの記号なので、**粒(9px)でも描く** */}
+          <path
+            d={STROKE.bearlie}
+            fill="none"
+            stroke={ac}
+            strokeWidth="0.85"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+          {/* 目・鼻・ほくろは 24px でも1px弱。粒では落とす(LOD) */}
+          {detail && (
+            <g fill={ac}>
+              {LIE_EYES.map(([x, y]) => (
+                <circle
+                  key={x}
+                  cx={x.toFixed(2)}
+                  cy={y.toFixed(2)}
+                  r={LIE_EYE_R.toFixed(2)}
+                />
+              ))}
+              <path d={LIE_NOSE} />
+              <circle
+                cx={LIE_MOLE[0].toFixed(2)}
+                cy={LIE_MOLE[1].toFixed(2)}
+                r={LIE_MOLE_R.toFixed(2)}
+              />
+            </g>
+          )}
+        </>
+      );
+
     case "earth":
       return (
         <>
@@ -1122,13 +1238,14 @@ export function CharmShelf() {
   const myTotal = useGameStore((s) => s.myTotal);
   const hasEarth = useGameStore((s) => s.hasEarthCharm);
   const caughtSky = useGameStore((s) => s.caughtSky);
+  const hasPoke = useGameStore((s) => s.hasPokeCharm);
   const equipped = useGameStore((s) => s.equippedCharms);
   const toggleCharm = useGameStore((s) => s.toggleCharm);
   const level = charmLevelOf(myTotal);
 
   const owned = useMemo(
-    () => ownedCharms(myTotal, hasEarth, caughtSky),
-    [myTotal, hasEarth, caughtSky]
+    () => ownedCharms(myTotal, hasEarth, caughtSky, hasPoke),
+    [myTotal, hasEarth, caughtSky, hasPoke]
   );
   // store の equippedCharms は端末に残るので、持っていないものが混じることが
   // ありうる(?charm= で見せた状態のあと、など)。表示は必ず「持っている」と交差させる
@@ -1136,7 +1253,9 @@ export function CharmShelf() {
     const has = new Set(owned);
     return new Set(equipped.filter((i) => has.has(i)));
   }, [equipped, owned]);
-  const allOn = owned.length > 0 && on.size === owned.length;
+  // 上限があるので「ぜんぶ」は "つけられるだけ つけた" の意味になる
+  const canWear = Math.min(owned.length, MAX_EQUIPPED_CHARMS);
+  const allOn = owned.length > 0 && on.size >= canWear;
 
   // 一括のつけ外し。store に一括アクションが無いので順に押すが、同時に12回
   // 鳴らすと「バチッ」と割れるので少しずつずらす。見た目も順に灯って気持ちいい
@@ -1151,8 +1270,12 @@ export function CharmShelf() {
   const setAll = (want: boolean) => {
     timers.current.forEach(clearTimeout);
     timers.current = [];
-    // つけるときは古い順(房の上から)、外すときは新しい順(房の下から)
-    const list = want ? [...owned] : [...owned].reverse();
+    // つけるときは古い順(房の上から)、外すときは新しい順(房の下から)。
+    // 上限があるので、つけるのは**新しい方から** MAX_EQUIPPED_CHARMS 個
+    // (手に入れたばかりのものが上限で締め出されるのがいちばん がっかりする)
+    const list = want
+      ? owned.slice(-MAX_EQUIPPED_CHARMS)
+      : [...owned].reverse();
     list.forEach((i, k) => {
       const run = () => {
         const s = useGameStore.getState();
@@ -1183,18 +1306,10 @@ export function CharmShelf() {
     <div className="kk-charms">
       <div className="kk-charms-head">
         <span className="kk-sec-label kk-label-charm">チャーム</span>
-        {/* 分母は「持っている数」。あつめた数は下の進捗の行が言ってくれるので、
-            ここは つけ外しの手ごたえ(いま何個ついているか)に絞る */}
+        {/* 分母は「同時につけられる数」。あつめた数は下の進捗の行が言うので、
+            ここは つけ外しの手ごたえ(あと何個つけられるか)に絞る */}
         <span className="kk-charms-count">
-          {owned.length > 0 ? (
-            <>
-              <b>{on.size}</b>/{owned.length} こ ついてる
-            </>
-          ) : (
-            <>
-              <b>0</b>/{NORMAL_CHARM_COUNT} こ
-            </>
-          )}
+          <b>{on.size}</b>/{MAX_EQUIPPED_CHARMS} こ ついてる
         </span>
         {owned.length > 0 && (
           <button
@@ -1202,7 +1317,11 @@ export function CharmShelf() {
             className="kk-charms-all"
             onClick={() => setAll(!allOn)}
           >
-            {allOn ? "ぜんぶ はずす" : "ぜんぶ つける"}
+            {allOn
+              ? "ぜんぶ はずす"
+              : owned.length > MAX_EQUIPPED_CHARMS
+                ? `${MAX_EQUIPPED_CHARMS}こ つける`
+                : "ぜんぶ つける"}
           </button>
         )}
       </div>

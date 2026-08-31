@@ -50,7 +50,7 @@ export default function NickModal({ open, onClose }: NickModalProps) {
       <div className="modal-card">
         <h2 className="modal-title">なまえ</h2>
         <p className="nick-lead">
-          いれると 左下の「せかいの ようす」に
+          右上の「月の ようす」と 左下のコメントに、
           <br />
           この名前で のこるよ。
           <br />

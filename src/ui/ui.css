@@ -233,6 +233,10 @@
 
 /* 下部: クールダウンピル + フィード */
 .hud-bottom {
+  /* スマホのソフトキーボードぶん持ち上げる(Feed.tsx が --kk-kb を書く)。
+     HUDは absolute なので、ページのスクロールでは逃げられない */
+  transform: translateY(calc(-1 * var(--kk-kb, 0px)));
+  transition: transform 0.18s ease;
   position: absolute;
   left: 0;
   right: 0;
@@ -250,6 +254,27 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
+  /* 見えるのは --feed-rows 行ぶん。中身はもっと入っていて、指でさかのぼれる。
+     1行の高さ(26px)+ すきま(4px)で見当をつける。2行に折り返したコメントが
+     あるぶんは、そのぶん行数が減って見えるだけで壊れない */
+  max-height: calc(var(--feed-rows, 4) * 30px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* ここを触れるようにしないと、指のドラッグが後ろの月へ抜けて回ってしまう */
+  pointer-events: auto;
+  touch-action: pan-y;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 254, 242, 0.28) transparent;
+}
+.feed::-webkit-scrollbar {
+  width: 4px;
+}
+.feed::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 254, 242, 0.28);
+}
+.feed::-webkit-scrollbar-track {
+  background: transparent;
 }
 .feed-row {
   display: flex;
@@ -266,16 +291,8 @@
   color: rgba(255, 254, 242, 0.88);
   animation: feed-in 0.35s var(--spring) both;
 }
-/* 古い行ほど薄く */
-.feed-row:nth-child(2) {
-  opacity: 0.78;
-}
-.feed-row:nth-child(3) {
-  opacity: 0.56;
-}
-.feed-row:nth-child(4) {
-  opacity: 0.38;
-}
+/* さかのぼって読める箱になったので、古い行を薄くするのはやめた。
+   薄くしたままだと、スクロールして読みにきた先がいちばん薄い = 読めない */
 .feed-flag {
   font-size: 14px;
   line-height: 1;
@@ -1487,9 +1504,12 @@
 .kk-preview-stage {
   position: relative;
   flex: none;
-  /* 剣そのものは 70px。左右の 4px は「揺れしろ」で、ここが無いと
-     いちばん張り出す鍔の端が台のふちに当たって切れる */
-  width: 78px;
+  /* 房のぶん viewBox が右へ広がったので、台も広げる。
+     広げないと、同じ幅の中で剣ごと縮んでチャームが粒に戻ってしまう。
+     高さは中身なり(align-self)。器の高さに合わせて縮めると、
+     房のいちばん下が台のふちで切れる */
+  width: 108px;
+  align-self: flex-start;
   border-radius: 13px;
   overflow: hidden;
   background: linear-gradient(180deg, var(--kk-well-top), var(--kk-well-bot));
@@ -1564,26 +1584,52 @@
 }
 /* ついているチャームは「潰れない大きさ」で全部ならべる。
    1行7個の固定グリッドにしてあるので、13個でもきっちり2行で収まる */
+/* 金具のバーに、チャームがぶら下がっている並び。
+   灰色の丸に1個ずつ入れていたときは、キーホルダーではなく
+   「UIのアイコンが並んでいる」ようにしか見えなかった。 */
 .kk-preview-charms {
   list-style: none;
-  display: grid;
-  /* 幅320pxの端末でも1行7個が入るよう、枠は縮められるようにしておく */
-  grid-template-columns: repeat(7, minmax(20px, 24px));
-  gap: 3px;
-  margin-top: 2px;
-  justify-content: start;
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  /* 少し重ねる。等間隔で離すと、房ではなく整列した粒に見える */
+  gap: 0 1px;
+  margin: 3px 0 0;
+  padding: 5px 3px 0;
+  /* バーはチャームのぶんだけ。器いっぱいに伸ばすと、何も下がっていない所まで
+     金具が続いて「ものさし」に見える */
+  width: max-content;
+  max-width: 100%;
+}
+/* 上に通した金具のバー。ここから下がっている、という読み方をつくる */
+.kk-preview-charms::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  top: 4px;
+  height: 2.5px;
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    #f2f5fb 0%,
+    #c3cbdb 45%,
+    #8d97ab 100%
+  );
+  box-shadow: 0 1px 1px rgba(43, 38, 32, 0.22);
 }
 .kk-preview-charms li {
-  height: 24px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
-  background: rgba(58, 55, 48, 0.08);
+  line-height: 0;
 }
-/* 隠しチャームだけ受け皿をひと段深く。色は足さない(アクセントはコーラル1本) */
+/* 1個おきに少し下げる。全部そろえると、ぶら下がりではなく定規に見える */
+.kk-preview-charms li:nth-child(even) {
+  margin-top: 4px;
+}
+/* 隠しチャームは、まわりにやわらかい光。丸い受け皿では出せない特別さ */
 .kk-preview-charms li.secret {
-  background: rgba(58, 55, 48, 0.17);
-  box-shadow: inset 0 0 0 1.6px rgba(58, 55, 48, 0.42);
+  filter: drop-shadow(0 0 4px rgba(245, 196, 0, 0.85));
 }
 .kk-preview-sub {
   font-size: 10.5px;
@@ -2450,7 +2496,7 @@ button.kk-charm-btn:active .kk-charm-cell {
     margin-left: -13.5px;
   }
   .kk-preview-stage {
-    width: 72px;
+    width: 98px;
   }
   .kk-skin-stage {
     height: 40px;
@@ -2489,10 +2535,20 @@ button.kk-charm-btn:active .kk-charm-cell {
    既存の .feed / .feed-row / .feed-flag / .feed-win はそのまま使い、
    ここには足りない分だけを足す。古い行を薄くする nth-child より後ろに
    置いてあるので、.feed-fresh / .feed-live が上書きできる。 */
+/* 4行が宙に浮いていると、ただの通知の残りに見えて「チャット欄」と
+   認識されない。うっすらでも囲いを付けると、そこが読む場所だと分かる */
 .feed-wrap {
   display: flex;
   flex-direction: column;
   gap: 5px;
+  padding: 6px 8px 8px;
+  border-radius: 14px;
+  background: linear-gradient(
+    180deg,
+    rgba(5, 7, 26, 0.28),
+    rgba(5, 7, 26, 0.42)
+  );
+  border: 1px solid rgba(255, 254, 242, 0.1);
 }
 
 /* 「せかいの ようす」の見出し。ここが生きている画面だと分かる目印 */
@@ -2764,4 +2820,303 @@ button.kk-charm-btn:active .kk-charm-cell {
   .wd-invite {
     animation: fade-in 0.3s ease both;
   }
+}
+
+/* ── 右上のアイコンが4つになったので、せまい画面では少し詰める ────────
+   44pxを4つ並べると、左の「第N代・みんなで N本」と取り合いになって
+   バッジが潰れる。指のあたりの下限(40px)までは詰めてよい。 */
+.icon-btn {
+  flex: 0 0 auto;
+}
+.hud-badges {
+  min-width: 0;
+}
+@media (max-width: 430px) {
+  .hud-top-right {
+    gap: 6px;
+  }
+  .icon-btn {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  }
+}
+
+/* ── フィードの「ぜんぶ みる」──────────────────────────────
+   見出しの右にちょこんと置く。流れる4行より目立ってはいけない
+   (主役は流れている中身で、これはその逃し口) */
+.feed-all {
+  pointer-events: auto;
+  margin-left: 2px;
+  padding: 2px 7px;
+  border: 1px solid rgba(255, 254, 242, 0.24);
+  border-radius: 999px;
+  background: rgba(5, 7, 26, 0.5);
+  color: rgba(255, 254, 242, 0.8);
+  font: inherit;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition:
+    transform 0.12s var(--spring),
+    background 0.14s ease;
+}
+.feed-all:active {
+  transform: scale(0.92);
+  background: rgba(5, 7, 26, 0.8);
+}
+
+/* ── 「せかいの ようす」の一覧(したく引き出しの器を借りている) ────── */
+.feedlog-list {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.feedlog-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #5d564b;
+  background: rgba(43, 38, 32, 0.04);
+}
+/* 引き出しの地はクリーム色。3D用の白い字のままだと読めないので、
+   自分の行・当たりの行の色だけここで置きなおす */
+.feedlog-row.feed-mine {
+  color: #a97d00;
+  background: rgba(245, 196, 0, 0.13);
+}
+.feedlog-row.feed-win {
+  color: #8a5a00;
+  background: linear-gradient(
+    90deg,
+    rgba(245, 196, 0, 0.26),
+    rgba(245, 196, 0, 0.08)
+  );
+}
+.feedlog-row .feed-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 3D の上に出す用の白い字のままだと、クリーム色の地では消えてしまう。
+   行の色を継いで、薄さだけ opacity で作る */
+.feedlog-row .feed-hole,
+.feedlog-row .feed-time {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 800;
+  color: inherit;
+  opacity: 0.5;
+  font-variant-numeric: tabular-nums;
+  text-shadow: none;
+}
+.feedlog-empty,
+.feedlog-note {
+  margin: 10px 2px 0;
+  font-size: 11px;
+  line-height: 1.7;
+  color: #8a7f6d;
+}
+.feedlog-empty {
+  margin: 22px 2px;
+  text-align: center;
+  font-size: 12px;
+}
+
+
+/* ── チャット ────────────────────────────────────────
+   左下の欄は みんなのコメント だけ。だれが刺したかは右上の通知が受け持つ
+   (読むものと流し見するものが同居すると、どちらも読みにくくなる)。 */
+.feed-wrap {
+  width: min(78vw, 340px);
+}
+/* 書いているあいだは濃くする。手元が見えないまま打つのがいちばん不安 */
+.feed-wrap.is-writing {
+  background: linear-gradient(
+    180deg,
+    rgba(5, 7, 26, 0.62),
+    rgba(5, 7, 26, 0.78)
+  );
+  border-color: rgba(255, 254, 242, 0.22);
+}
+
+.feed-row.feed-chat {
+  align-items: baseline;
+  max-width: 100%;
+  padding: 5px 11px 5px 8px;
+  /* 地も少し濃くする。星空の上だと 0.5 では字が浮いてしまう */
+  background: rgba(5, 7, 26, 0.62);
+}
+/* 名前は読み手がいちばん先に見るところ。色で本文と分ける */
+.feed-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--accent, #ffd93d);
+}
+/* コメントの時刻。本文のじゃまをしない濃さで、右端にそっと置く */
+.feed-row.feed-chat .feed-time {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-left: auto;
+  padding-left: 4px;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: rgba(255, 254, 242, 0.42);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.feed-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* コメントは折り返してぜんぶ読ませる(名前だけは1行に詰める) */
+  overflow-wrap: anywhere;
+  /* 携帯の細い字だと、透かした白は霞んで読めない。
+     **本文だけは透かさず、影で背景から起こす。**
+     小さくしたぶんは太さで補う */
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.45;
+  color: #fffef2;
+  text-shadow: 0 1px 3px rgba(5, 7, 26, 0.85);
+}
+
+.feed-empty {
+  margin: 2px 4px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: rgba(255, 254, 242, 0.5);
+  text-shadow: 0 1px 4px rgba(5, 7, 26, 0.9);
+}
+
+/* ── 入力欄 ── */
+.chat-form {
+  display: flex;
+  gap: 5px;
+  margin-top: 2px;
+}
+.chat-input {
+  pointer-events: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 7px 11px;
+  border: 1px solid rgba(255, 254, 242, 0.22);
+  border-radius: 999px;
+  background: rgba(5, 7, 26, 0.62);
+  color: #fffef2;
+  /* 16px 未満だと iOS が勝手に画面を拡大する。ここだけは縮めない */
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.2;
+}
+.chat-input::placeholder {
+  color: rgba(255, 254, 242, 0.42);
+  font-size: 13px;
+}
+.chat-input:focus {
+  outline: none;
+  border-color: rgba(255, 217, 61, 0.6);
+  background: rgba(5, 7, 26, 0.82);
+}
+.chat-send {
+  pointer-events: auto;
+  flex: 0 0 auto;
+  padding: 0 13px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ffe071, #f5c400);
+  color: #241c00;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition:
+    transform 0.12s var(--spring),
+    filter 0.14s ease;
+}
+.chat-send:active {
+  transform: scale(0.93);
+}
+.chat-send:disabled {
+  filter: grayscale(0.7) brightness(0.75);
+  cursor: default;
+}
+
+/* ── 「ぜんぶ みる」の中のコメント行 ── */
+.feedlog-row.is-chat {
+  align-items: baseline;
+  color: #4a4438;
+  background: rgba(245, 196, 0, 0.09);
+}
+.feedlog-row.is-chat .feed-name {
+  color: #a97d00;
+  text-shadow: none;
+}
+
+/* 「ぜんぶ みる」の地はクリーム色。3D用の白い字のままだと読めない */
+.feedlog-row.is-chat .feed-body {
+  flex: 1 1 auto;
+  color: #3a3730;
+  text-shadow: none;
+  white-space: normal;
+}
+
+/* 「ぜんぶ みる」の続きを取るボタン。下まで来ると自動でも取りにいくが、
+   自動が届かなかったとき(短い一覧・慣性が効かない環境)の逃し口として残す */
+.feedlog-more {
+  margin: 10px auto 4px;
+  padding: 9px 18px;
+  border: 1px solid rgba(43, 38, 32, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #5d564b;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: transform 0.12s var(--spring);
+}
+.feedlog-more:active {
+  transform: scale(0.95);
+}
+.feedlog-more:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* 運営からのおしらせ。人のコメントと同じ流れに置くが、
+   だれか一人の発言ではないことが一目で分かるように色を変える */
+.feed-row.feed-chat.is-op {
+  background: rgba(245, 129, 31, 0.22);
+  border-color: rgba(245, 129, 31, 0.45);
+}
+.feed-row.feed-chat.is-op .feed-name {
+  color: #ffbd7a;
+}
+.feedlog-row.is-chat.is-op {
+  background: rgba(245, 129, 31, 0.14);
+}
+.feedlog-row.is-chat.is-op .feed-name {
+  color: #b35d0f;
 }

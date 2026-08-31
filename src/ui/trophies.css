@@ -358,3 +358,55 @@
     }
   }
 }
+
+/* 指でまわして迷子になったときの帰り道。ページ送りのとなりに小さく置く */
+.th-btn-reset {
+  padding: 0;
+  width: 38px;
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* 最後のページの見出し。第1〜3代だけの「はじまりの3人」。
+   ここだけ別の場所だと分かればいいので、金の細字を1行だけ */
+.th-firstthree {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: var(--accent, #ffd93d);
+  text-shadow: 0 0 12px rgba(255, 217, 61, 0.45);
+  animation: th-firstthree-in 0.5s ease both;
+}
+@keyframes th-firstthree-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 自分がとばしたトロフィーにだけ出る、じまんボタン */
+.th-share {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  background: linear-gradient(180deg, #ffe071, #f5c400);
+  color: #241c00;
+  border-color: rgba(255, 255, 255, 0.6);
+  font-weight: 800;
+}
+
+/* 人のトロフィーのシェア。金の「じまん」とは別物だと分かるよう地は控えめに。
+   **ただしカードはクリーム色。** 暗い背景むけの白文字にしていたせいで、
+   文字が地に溶けて「空っぽのボタン」に見えていた */
+.th-share.th-share-alt {
+  background: rgba(43, 38, 32, 0.07);
+  color: #4a4438;
+  border: 1.5px solid rgba(43, 38, 32, 0.22);
+  box-shadow: none;
+  font-weight: 800;
+}

@@ -18,6 +18,43 @@ export const POLL_MS = 4000;
 /** 名前の最大文字数 */
 export const NAME_MAX_LEN = 12;
 
+// ── チャット ────────────────────────────────────────
+/** 1回に書ける文字数。長い文はチャットの流れを止めるので短く切る */
+export const CHAT_MAX_LEN = 60;
+/** 連投の間隔(秒)。同じ人が流れを埋めないように */
+export const CHAT_COOLDOWN_SEC = 8;
+/**
+ * 同じ回線(ip_hash)から1分に書ける本数。
+ * 端末ごとの間隔とは別に見る。学校や会社のように出口IPを共有している人たちが、
+ * お互いの発言でお互いを止めてしまわないよう、間隔ではなく本数で制限する。
+ */
+export const CHAT_BURST_PER_MIN = 12;
+
+/** サーバーが返す直近のコメント数 */
+export const CHAT_FETCH = 30;
+
+/**
+ * 運営として出したコメントの id。
+ * 個人の名前ではなく「うんえい」として、おしらせの見た目で出す。
+ * (書いた本人の名前が入ったままだと、ただの1コメントに見えてしまう)
+ */
+export const OPERATOR_CHAT_IDS: readonly number[] = [1, 13];
+
+/** 「ぜんぶ みる」で1回にさかのぼる件数 */
+export const CHAT_PAGE = 50;
+/**
+ * 右上の「だれが刺したか」の記録で、一度に見える行数。
+ * 携帯だと縦が短く、6行あるとこすくまくんの顔にちょうど重なってしまう。
+ * 2行だけ出して、続きは指でさかのぼる。
+ */
+export const STAB_LOG_ROWS = 2;
+
+/**
+ * 左下のチャットで、一度に見える行数(コメントだけ・新しいものが下)。
+ * 中身はもっと入っていて、指でさかのぼれる。ここは「箱の高さ」の指定。
+ */
+export const FEED_ROWS = 4;
+
 // ── 演出タイミング (ms) ──────────────────────────────
 export const T_STAB = 1100; // 剣を構えて刺すまで
 export const T_SUSPENSE = 1600; // 刺した後の「……」の間
@@ -64,13 +101,19 @@ export interface SwordSkin {
   opacity: number;
   /** 見る角度で色が動く(にじいろ) */
   iridescent: boolean;
+  /**
+   * きらめきの強さ(0=なし)。刃の上を光の帯がゆっくり流れる。
+   * ぎん・きんは「色を変えただけの剣」に見えて、他の人から違いが分からなかった。
+   * 金属や宝石は"動く反射"でそれと分かるものなので、遠景でも動きで見分けられるようにした。
+   */
+  sparkle: number;
   /** UIのラベルにそえる小さな絵文字 */
   emoji: string;
 }
 
 export const SWORD_SKINS: readonly SwordSkin[] = [
   {
-    name: "プラスチック",
+    name: "ノーマル",
     needWins: 0,
     tinted: true,
     hex: "#ffd93d",
@@ -81,6 +124,7 @@ export const SWORD_SKINS: readonly SwordSkin[] = [
     emissive: 0.2,
     opacity: 1,
     iridescent: false,
+    sparkle: 0,
     emoji: "🗡",
   },
   {
@@ -93,6 +137,7 @@ export const SWORD_SKINS: readonly SwordSkin[] = [
     emissive: 0.05,
     opacity: 1,
     iridescent: false,
+    sparkle: 1,
     emoji: "🥈",
   },
   {
@@ -105,6 +150,7 @@ export const SWORD_SKINS: readonly SwordSkin[] = [
     emissive: 0.1,
     opacity: 1,
     iridescent: false,
+    sparkle: 1,
     emoji: "🥇",
   },
   {
@@ -117,11 +163,12 @@ export const SWORD_SKINS: readonly SwordSkin[] = [
     emissive: 0.34,
     opacity: 0.58,
     iridescent: false,
+    sparkle: 0.85,
     emoji: "💠",
   },
   {
     name: "にじいろ",
-    needWins: 3,
+    needWins: 5,
     tinted: false,
     hex: "#ffffff",
     metalness: 0.72,
@@ -129,6 +176,7 @@ export const SWORD_SKINS: readonly SwordSkin[] = [
     emissive: 0.22,
     opacity: 1,
     iridescent: true,
+    sparkle: 1,
     emoji: "🌈",
   },
 ] as const;
@@ -151,7 +199,8 @@ export type CharmShape =
   | "star" // ぷっくり星
   | "plate" // ネームプレート
   | "tassel" // ひものタッセル
-  | "bear" // こすくまくん(全身。公式ロゴのポーズ)
+  | "bear" // こすくまくん(おすわり)
+  | "bearlie" // こすくまくん ふたり(ねそべり。公式ロゴ)
   | "earth" // ちきゅう(隠し)
   // ── ここから下は、月の向こうを横切るものをつかまえて手に入れる ──
   | "comet" // ながれぼし
@@ -285,7 +334,7 @@ export const CHARMS: readonly Charm[] = [
     need: 300,
     name: "こすくまくん",
     emoji: "🐻",
-    shape: "bear",
+    shape: "bearlie",
     hex: "#fdf7c1",
     accentHex: "#2b2620",
     material: "resin",
@@ -343,7 +392,27 @@ export const CHARMS: readonly Charm[] = [
     material: "chrome",
     secret: true,
   },
+  // ── こすくまくんを POKE_CHARM_NEED 回つついた人だけ ──
+  // 300本のほうは ねそべった2匹(ロゴ)。こちらは おすわりの1匹で、
+  // 並べたときに一目で違うものだと分かる。
+  {
+    need: Infinity,
+    name: "すわりこすくまくん",
+    emoji: "🐻",
+    shape: "bear",
+    hex: "#fdf7c1",
+    accentHex: "#2b2620",
+    material: "resin",
+    secret: true,
+  },
 ] as const;
+
+/**
+ * 剣に同時につけられるチャームの数。
+ * 全部つけると房が長くなりすぎて、剣がチャームに埋もれてしまう。
+ * 「どれを見せるか選ぶ」のがコレクションの楽しみになる数として10。
+ */
+export const MAX_EQUIPPED_CHARMS = 10;
 
 /** 刺して手に入るチャームの数(= 隠しチャームを除いた本数)。棚の分母にもなる */
 export const NORMAL_CHARM_COUNT = CHARMS.filter((c) => !c.secret).length;
@@ -381,6 +450,13 @@ export function skyCharmLevelOf(catches: number): number {
   }
   return n;
 }
+
+// ── こすくまくんを つつく ────────────────────────────
+/** こすくまくんを通算で何回つついたら「かお」のチャームが開くか */
+export const POKE_CHARM_NEED = 10000;
+
+/** つつきで手に入る隠しチャーム(CHARMS の index) */
+export const POKE_CHARM_INDEX = CHARMS.findIndex((c) => c.shape === "bear");
 
 /** 空のものが飛んでくる間隔(ms)。この幅でランダムに次が決まる */
 export const SKY_GAP_MS: [number, number] = [9000, 22000];

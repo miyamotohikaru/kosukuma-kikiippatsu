@@ -22,6 +22,9 @@ import SwordArt, { effectiveHex } from "./SwordArt";
 import { SkinUnlockCard, SwordRack, useEquippedCharms } from "./SwordRack";
 import { CharmGet } from "./CharmShelf";
 import GearDrawer from "./GearDrawer";
+import FeedLog from "./FeedLog";
+import ShareCard from "./ShareCard";
+import StabNotice from "./StabNotice";
 import "./ui.css";
 
 export default function Hud() {
@@ -44,11 +47,18 @@ export default function Hud() {
 
   const [helpOpen, setHelpOpen] = useState(false);
   const [gearOpen, setGearOpen] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [flashId, setFlashId] = useState(0);
+  const nickname = useGameStore((s) => s.nickname);
 
   // 刺しはじめたら「したく」はしまう(カットシーンの邪魔をしない)
   useEffect(() => {
-    if (phase !== "idle" && phase !== "confirming") setGearOpen(false);
+    if (phase !== "idle" && phase !== "confirming") {
+      setGearOpen(false);
+      setLogOpen(false);
+      setShareOpen(false);
+    }
   }, [phase]);
 
   // 当たりの瞬間の白フラッシュ(単発イベントを購読して0.15秒で消す)
@@ -151,6 +161,15 @@ export default function Hud() {
           <button
             type="button"
             className="icon-btn"
+            aria-label="きろくを みる・じまんする"
+            aria-haspopup="dialog"
+            onClick={() => setShareOpen(true)}
+          >
+            📣
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
             aria-label="あそびかた"
             onClick={() => setHelpOpen(true)}
           >
@@ -163,7 +182,7 @@ export default function Hud() {
       {showFeed && (
         <div className="hud-bottom">
           <CooldownPill />
-          <Feed />
+          <Feed onOpenLog={() => setLogOpen(true)} />
         </div>
       )}
 
@@ -251,12 +270,17 @@ export default function Hud() {
             {launchInfo.isMe ? (
               <>
                 <div className="banner-big banner-hit">🎯 あたり！！</div>
-                <div className="banner-sub">こすくまくん、宇宙へ！！</div>
+                {/* 名前を入れている人は、自分の名前でとばした実感がほしい */}
+                <div className="banner-sub">
+                  {nickname
+                    ? `${nickname}が こすくまくんを とばした！！`
+                    : "こすくまくん、宇宙へ！！"}
+                </div>
               </>
             ) : (
               <>
                 <div className="banner-big">
-                  {launchInfo.name ?? "だれか"}さんが あてた！
+                  {launchInfo.name ?? "だれか"}が とばした！
                 </div>
                 <div className="banner-sub">
                   第{launchInfo.roundNo}代こすくまくん、宇宙へ
@@ -311,7 +335,12 @@ export default function Hud() {
         />
       )}
 
+      {/* 右上「だれが刺したか」の通知 */}
+      <StabNotice />
+
       <GearDrawer open={gearOpen} onClose={() => setGearOpen(false)} />
+      <FeedLog open={logOpen} onClose={() => setLogOpen(false)} />
+      <ShareCard open={shareOpen} onClose={() => setShareOpen(false)} />
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );

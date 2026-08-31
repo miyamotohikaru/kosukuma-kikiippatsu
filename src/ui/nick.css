@@ -170,3 +170,34 @@
   border-color: rgba(245, 196, 0, 0.85);
   color: #f5c400;
 }
+
+/* ── したく引き出しのいちばん上に置く、1行の名札 ────────────────
+   縦に積むと、剣のプレビューが押し下げられて引き出しからあふれる。
+   ラベルと入力を横並びにして1行に収める。 */
+.nick-row {
+  display: flex;
+  /* .nick が縦積みなので、ここで必ず横並びに戻す */
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.nick-row-label {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 800;
+  color: #8a7f6d;
+  letter-spacing: 0.04em;
+}
+.nick-row .nick-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 7px 10px;
+  font-size: 14px;
+}
+.nick-row-note {
+  display: block;
+  margin: 4px 2px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}

@@ -269,6 +269,46 @@ function buildTopper(
       mesh.scale.y = 1.35;
       return mesh;
     }
+    case "crown": {
+      // 王冠: 輪 + まわりに立てた5本のとがり。差し色で先端に玉を載せる
+      const g = new THREE.Group();
+      const band = new THREE.Mesh(
+        track(new THREE.CylinderGeometry(0.34, 0.38, 0.16, 20, 1, true)),
+        mat
+      );
+      band.position.y = -0.14;
+      g.add(band);
+      const spike = track(new THREE.ConeGeometry(0.09, 0.34, 8));
+      const bead = track(new THREE.SphereGeometry(0.055, 8, 6));
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        const x = Math.cos(a) * 0.3;
+        const z = Math.sin(a) * 0.3;
+        const sp = new THREE.Mesh(spike, mat);
+        sp.position.set(x, 0.05, z);
+        g.add(sp);
+        const bd = new THREE.Mesh(bead, accent);
+        bd.position.set(x, 0.25, z);
+        g.add(bd);
+      }
+      return g;
+    }
+    case "ring": {
+      // 立てた輪。惑星の環を1つだけ抜き出したような、抜けのある飾り
+      const g = new THREE.Group();
+      const ring = new THREE.Mesh(
+        track(new THREE.TorusGeometry(0.34, 0.075, 10, 28)),
+        mat
+      );
+      ring.rotation.x = 0.34;
+      g.add(ring);
+      const core = new THREE.Mesh(
+        track(new THREE.SphereGeometry(0.12, 12, 10)),
+        accent
+      );
+      g.add(core);
+      return g;
+    }
   }
 }
 
@@ -279,8 +319,12 @@ interface BuiltTrophy {
   redrawText: () => void;
 }
 
-function buildTrophy(roundNo: number, name: string): BuiltTrophy {
-  const p = getTrophyParams(roundNo, name);
+function buildTrophy(
+  roundNo: number,
+  name: string,
+  version: number
+): BuiltTrophy {
+  const p = getTrophyParams(roundNo, name, version);
   const geoms: THREE.BufferGeometry[] = [];
   const mats: THREE.Material[] = [];
   const texs: THREE.Texture[] = [];
@@ -431,14 +475,23 @@ function buildTrophy(roundNo: number, name: string): BuiltTrophy {
 export interface TrophyMeshProps {
   roundNo: number;
   name: string;
+  /** くじの版。省略時は 1(記録が無い古い代と同じ姿になる) */
+  version?: number;
 }
 
 /**
  * <TrophyMesh roundNo={n} name={s} /> — <Canvas> 内で使う。
  * 同じ入力なら世界中で同じ形のトロフィーになる。
  */
-export default function TrophyMesh({ roundNo, name }: TrophyMeshProps) {
-  const built = useMemo(() => buildTrophy(roundNo, name), [roundNo, name]);
+export default function TrophyMesh({
+  roundNo,
+  name,
+  version = 1,
+}: TrophyMeshProps) {
+  const built = useMemo(
+    () => buildTrophy(roundNo, name, version),
+    [roundNo, name, version]
+  );
 
   useEffect(() => {
     // Webフォント読み込み完了後にプレートを描き直す(初回は代替フォント)
