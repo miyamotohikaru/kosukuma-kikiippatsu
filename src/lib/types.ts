@@ -75,6 +75,38 @@ export interface StateResponse {
   chat: ChatMessage[];
 }
 
+/**
+ * その人の記録(端末ではなく **鍵(fp)にひもづく**)。
+ * ひきつぎコードを入れれば、別の端末・別のブラウザでもこれが戻る。
+ */
+export interface PlayerRecord {
+  /** 通算の刺し本数 */
+  total: number;
+  /** 隠しチャーム「ちきゅう」を持っているか */
+  earthCharm: boolean;
+  /** 空を横切るものを通算で何こ つかまえたか */
+  skyCatches: number;
+  /** こすくまくんを つついた回数 */
+  pokes: number;
+  /** 左下と右上に出る名前 */
+  nickname: string | null;
+  /** つけているチャームの一覧(packCharmSet の4バイト)。0=記録なし */
+  charms: number;
+  /** 選んでいる剣の色 / しあげ */
+  color: number;
+  skin: number;
+}
+
+/** GET /api/me のレスポンス */
+export interface MeResponse {
+  /** サーバーが知っているこの端末の鍵(cookie から引けたときも入る) */
+  fp: string | null;
+  /** その鍵がとばした代 */
+  wonRounds: number[];
+  /** 預けてある記録。まだ無ければ null */
+  player: PlayerRecord | null;
+}
+
 /** POST /api/chat のリクエストボディ */
 export interface ChatRequest {
   body: string;

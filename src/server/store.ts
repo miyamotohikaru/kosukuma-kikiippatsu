@@ -23,6 +23,7 @@ import type {
   StabEvent,
   TrophyRecord,
   WinnerInfo,
+  PlayerRecord,
 } from "@/lib/types";
 
 // ── ルートハンドラへ公開する契約 ─────────────────────
@@ -100,9 +101,54 @@ export interface IGameStore {
    * あたり穴に刺した行の fp から引く(勝者の fp は kk_stabs にしか無い)。
    */
   wonRoundsOf(fp: string): Promise<number[]>;
+  /** 鍵にひもづけて預けてある記録。まだ無ければ null */
+  getPlayer(fp: string): Promise<PlayerRecord | null>;
+  /**
+   * 記録を預ける。**数は大きいほうを採る**(union / max)。
+   * 同じ鍵を2台で使っても、あとから開いたほうが古い数で上書きしない。
+   */
+  savePlayer(fp: string, rec: PlayerRecord): Promise<PlayerRecord>;
+}
+
+/** 預かった記録を、後から開いた端末の数で減らさないように合わせる */
+export function mergePlayer(a: PlayerRecord, b: PlayerRecord): PlayerRecord {
+  return {
+    total: Math.max(a.total, b.total),
+    earthCharm: a.earthCharm || b.earthCharm,
+    skyCatches: Math.max(a.skyCatches, b.skyCatches),
+    pokes: Math.max(a.pokes, b.pokes),
+    // 名前と見た目は「あとから言ったほう」を採る(数とちがって新しいのが本人の意思)
+    nickname: b.nickname ?? a.nickname,
+    charms: b.charms || a.charms,
+    color: b.color,
+    skin: b.skin,
+  };
 }
 
 // ── 共通ヘルパ ───────────────────────────────────────
+
+/** kk_players の1行 */
+interface PlayerRow {
+  total: number;
+  earth_charm: boolean;
+  sky_catches: number;
+  pokes: number;
+  nickname: string | null;
+  charms: number;
+  color: number;
+  skin: number;
+}
+
+const toPlayer = (r: PlayerRow): PlayerRecord => ({
+  total: r.total,
+  earthCharm: r.earth_charm,
+  skyCatches: r.sky_catches,
+  pokes: r.pokes,
+  nickname: r.nickname,
+  charms: r.charms,
+  color: r.color,
+  skin: r.skin,
+});
 
 /** 新ラウンドのあたり穴を暗号乱数で決める(0..HOLE_COUNT-1) */
 const newWinningHole = (): number => randomInt(0, HOLE_COUNT);
@@ -274,6 +320,22 @@ class PostgresStore implements IGameStore {
         fp TEXT,
         ip_hash TEXT,
         created_at TIMESTAMPTZ DEFAULT now()
+      )`;
+    // その人の記録。**端末ではなく鍵(fp)にひもづける。**
+    // 端末のメモは消えるもの(Safari は7日で消す)なので、正はこちらに置く。
+    // ここに預けてあるから、ひきつぎコード1つで別の端末にも戻せる
+    await this.sql`
+      CREATE TABLE IF NOT EXISTS kk_players (
+        fp TEXT PRIMARY KEY,
+        total INT NOT NULL DEFAULT 0,
+        earth_charm BOOLEAN NOT NULL DEFAULT false,
+        sky_catches INT NOT NULL DEFAULT 0,
+        pokes INT NOT NULL DEFAULT 0,
+        nickname VARCHAR(24),
+        charms INT NOT NULL DEFAULT 0,
+        color SMALLINT NOT NULL DEFAULT 0,
+        skin SMALLINT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMPTZ DEFAULT now()
       )`;
     await this.sql`CREATE INDEX IF NOT EXISTS kk_chat_id_idx ON kk_chat (id DESC)`;
     await this.sql`CREATE INDEX IF NOT EXISTS kk_chat_fp_idx ON kk_chat (fp, created_at)`;
@@ -622,6 +684,36 @@ class PostgresStore implements IGameStore {
     return rows.map((r) => r.round_no);
   }
 
+  async getPlayer(fp: string): Promise<PlayerRecord | null> {
+    await this.ensureSchema();
+    const rows = (await this.sql`
+      SELECT total, earth_charm, sky_catches, pokes, nickname, charms, color, skin
+      FROM kk_players WHERE fp = ${fp}`) as PlayerRow[];
+    return rows.length > 0 ? toPlayer(rows[0]) : null;
+  }
+
+  async savePlayer(fp: string, rec: PlayerRecord): Promise<PlayerRecord> {
+    await this.ensureSchema();
+    // 数は GREATEST で大きいほうを残す。2台で同じ鍵を使っても減らない
+    const rows = (await this.sql`
+      INSERT INTO kk_players
+        (fp, total, earth_charm, sky_catches, pokes, nickname, charms, color, skin, updated_at)
+      VALUES (${fp}, ${rec.total}, ${rec.earthCharm}, ${rec.skyCatches}, ${rec.pokes},
+              ${rec.nickname}, ${rec.charms}, ${rec.color}, ${rec.skin}, now())
+      ON CONFLICT (fp) DO UPDATE SET
+        total       = GREATEST(kk_players.total, EXCLUDED.total),
+        earth_charm = kk_players.earth_charm OR EXCLUDED.earth_charm,
+        sky_catches = GREATEST(kk_players.sky_catches, EXCLUDED.sky_catches),
+        pokes       = GREATEST(kk_players.pokes, EXCLUDED.pokes),
+        nickname    = COALESCE(EXCLUDED.nickname, kk_players.nickname),
+        charms      = CASE WHEN EXCLUDED.charms <> 0 THEN EXCLUDED.charms ELSE kk_players.charms END,
+        color       = EXCLUDED.color,
+        skin        = EXCLUDED.skin,
+        updated_at  = now()
+      RETURNING total, earth_charm, sky_catches, pokes, nickname, charms, color, skin`) as PlayerRow[];
+    return toPlayer(rows[0]);
+  }
+
   async claim(roundNo: number, token: string, name: string): Promise<ClaimOutcome> {
     await this.ensureSchema();
     // token一致 & 未クレームのときだけ1行更新される(条件付きUPDATEで排他)
@@ -725,6 +817,8 @@ interface MemoryData {
   chatByIp: Map<string, number[]>;
   /** 端末ごとの最終書き込み時刻 */
   chatByFp: Map<string, number>;
+  /** 鍵ごとの記録(ひきつぎコードで引くもの) */
+  players: Map<string, PlayerRecord>;
 }
 
 function newMemRound(roundNo: number): MemRound {
@@ -765,6 +859,7 @@ class MemoryStore implements IGameStore {
     chatSeq: 0,
     chatByIp: new Map(),
     chatByFp: new Map(),
+    players: new Map(),
   };
 
   private activeRound(): MemRound {
@@ -958,6 +1053,17 @@ class MemoryStore implements IGameStore {
       if (stab && stab.fp === fp) out.push(r.roundNo);
     }
     return out.sort((a, b) => a - b);
+  }
+
+  async getPlayer(fp: string): Promise<PlayerRecord | null> {
+    return this.data.players.get(fp) ?? null;
+  }
+
+  async savePlayer(fp: string, rec: PlayerRecord): Promise<PlayerRecord> {
+    const prev = this.data.players.get(fp);
+    const next = prev ? mergePlayer(prev, rec) : rec;
+    this.data.players.set(fp, next);
+    return next;
   }
 
   async claim(roundNo: number, token: string, name: string): Promise<ClaimOutcome> {
