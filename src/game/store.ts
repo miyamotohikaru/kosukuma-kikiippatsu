@@ -341,6 +341,47 @@ function rememberMyRound(roundNo: number): void {
   LS.set(MY_ROUNDS_KEY, JSON.stringify([...cur, roundNo]));
 }
 
+/**
+ * サーバーが持っている「とばした代」に合わせる。
+ *
+ * とばした回数を端末のメモだけに書いていたので、**勝ったのに剣がもらえない道**
+ * がいくつもあった(当たった直後にタブが落ちた・メモの書き込みに失敗した など)。
+ * 記録の正はサーバーなので、開くたびに突き合わせて、足りなければ増やす。
+ * **減らすことはしない**(オフラインで勝ったぶんを消してしまわないため)。
+ */
+async function syncWonRounds(
+  set: (p: Partial<GameState>) => void,
+  get: () => GameState
+): Promise<void> {
+  try {
+    const res = await fetch(`/api/me?fp=${encodeURIComponent(getFingerprint())}`);
+    if (!res.ok) return;
+    const data = (await res.json()) as { wonRounds?: number[] };
+    const server = Array.isArray(data.wonRounds) ? data.wonRounds : [];
+    if (server.length === 0) return;
+
+    const merged = [...new Set([...loadMyRounds(), ...server])].sort(
+      (a, b) => a - b
+    );
+    LS.set(MY_ROUNDS_KEY, JSON.stringify(merged));
+
+    const wins = Math.max(get().myWins, merged.length);
+    if (wins === get().myWins) return;
+    // 剣のスキンは「とばした回数」で開く。合わせた回数で開き直す
+    const had = new Set(unlockedSkins(get().myWins));
+    const opened = unlockedSkins(wins).filter((i) => !had.has(i));
+    LS.set("kk-wins", String(wins));
+    set({ myWins: wins });
+    if (opened.length > 0) {
+      get().showToast(
+        `とばした きろくを 見つけたよ。あたらしい けんが つかえる！`
+      );
+    }
+  } catch {
+    /* 取れなくても遊べる(端末のメモがそのまま使われる) */
+  }
+}
+
 export function getFingerprint(): string {
   let fp = LS.get("kk-fp");
   if (!fp) {
@@ -978,6 +1019,8 @@ export const useGameStore = create<GameState>((set, get) => {
       const token = LS.get("kk-claim-token");
       const round = Number(LS.get("kk-claim-round") || 0);
       if (token && round > 0) set({ claimToken: token, claimRound: round });
+      // サーバーが持っている「とばした代」に合わせる(剣のスキンの根拠)
+      void syncWonRounds(set, get);
       void fetchState().then(() => {
         const s = get();
         if (s.phase === "boot") setPhase("title");
