@@ -896,16 +896,21 @@ export default function TrophyHall() {
   }, [selected, page]);
 
   /**
-   * 自分がとばしたトロフィーを外へ出す。
+   * トロフィーを外へ出す。
    * 端末のシェアシートがあればそれ(LINEにもXにも出せる)、
    * 無ければ文をコピーする。
+   *
+   * **自分のと人のとで文を変える。** 同じ「とばしました」で人のトロフィーを
+   * 流せてしまうと、この殿堂の意味がなくなる。
    */
-  const shareTrophy = async (t: TrophyRecord) => {
+  const shareTrophy = async (t: TrophyRecord, mine: boolean) => {
     const url =
       typeof window === "undefined" ? "" : `${window.location.origin}/trophies`;
-    const text =
-      `こすくまくん危機一髪で、第${t.roundNo}代 こすくまくんを 宇宙へ とばしました！` +
-      ` 名前はトロフィーに刻まれて ずっと残ります 🏆⚔️🌙`;
+    const text = mine
+      ? `こすくまくん危機一髪で、第${t.roundNo}代 こすくまくんを 宇宙へ とばしました！` +
+        ` 名前はトロフィーに刻まれて ずっと残ります 🏆⚔️🌙`
+      : `こすくまくん危機一髪の 第${t.roundNo}代を とばしたのは ${t.name}。` +
+        ` トロフィーに名前が刻まれています 🏆⚔️🌙`;
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
         await navigator.share({ text, url });
@@ -1086,15 +1091,23 @@ export default function TrophyHall() {
               <dd>{sel.stabCount.toLocaleString("ja-JP")}回</dd>
             </div>
           </dl>
-          {/* 自分がとばした代にだけ出す。人のトロフィーを自分の手柄として
-              流せてしまうと、この殿堂の意味がなくなる */}
-          {myRounds.includes(sel.roundNo) && (
+          {/* どのトロフィーもシェアできる。ただし**自分のだけ「じまん」**で、
+              人のは「見て」の紹介。文も変える(手柄の横取りにしない) */}
+          {myRounds.includes(sel.roundNo) ? (
             <button
               type="button"
               className="th-btn th-share"
-              onClick={() => void shareTrophy(sel)}
+              onClick={() => void shareTrophy(sel, true)}
             >
               {shared ? "コピーした！" : "🏆 これを じまんする"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="th-btn th-share th-share-alt"
+              onClick={() => void shareTrophy(sel, false)}
+            >
+              {shared ? "コピーした！" : "このトロフィーを シェアする"}
             </button>
           )}
         </div>
