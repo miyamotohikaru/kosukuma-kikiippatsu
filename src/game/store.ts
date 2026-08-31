@@ -354,9 +354,14 @@ async function syncWonRounds(
   get: () => GameState
 ): Promise<void> {
   try {
-    const res = await fetch(`/api/me?fp=${encodeURIComponent(getFingerprint())}`);
+    // メモが消えていたら鍵を名乗らずに聞く。サーバーが cookie の目じるしから
+    // 元の鍵を返してくれるので、それを取り戻してから記録を引き当てる
+    const mine = peekFingerprint();
+    const q = mine ? `?fp=${encodeURIComponent(mine)}` : "";
+    const res = await fetch(`/api/me${q}`);
     if (!res.ok) return;
-    const data = (await res.json()) as { wonRounds?: number[] };
+    const data = (await res.json()) as { fp?: string | null; wonRounds?: number[] };
+    if (!mine && data.fp) LS.set("kk-fp", data.fp);
     const server = Array.isArray(data.wonRounds) ? data.wonRounds : [];
     if (server.length === 0) return;
 
@@ -389,6 +394,16 @@ export function getFingerprint(): string {
     LS.set("kk-fp", fp);
   }
   return fp;
+}
+
+/**
+ * 記録を引き当てる鍵(fp)。**まだ無いときは作らない。**
+ * サーバーが cookie に同じ鍵を預けてくれているので、消えていたら
+ * まずそちらに聞く(`syncWonRounds`)。ここで新しく作ってしまうと、
+ * 別人になってしまって、勝った記録に永久にたどり着けなくなる。
+ */
+function peekFingerprint(): string | null {
+  return LS.get("kk-fp");
 }
 
 /**
