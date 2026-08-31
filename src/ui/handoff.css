@@ -1,0 +1,140 @@
+/* 「ひきつぎ」。引き出しの地はクリーム色なので、文字は濃い茶で置く
+   (3Dの上に出す白文字のパーツをそのまま持ってくると読めない)。 */
+
+.ho {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.ho-lead {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.75;
+  color: rgba(43, 38, 32, 0.72);
+}
+
+/* コードは「見せていい情報」ではないので、枠で囲って
+   本文の流れから少し浮かせ、うっかり読み飛ばさないようにする */
+.ho-block {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 11px 12px;
+  border: 1px solid rgba(43, 38, 32, 0.13);
+  border-radius: 12px;
+  background: rgba(43, 38, 32, 0.045);
+}
+
+.ho-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* 鍵そのもの。等幅で置かないと l と 1、0 と O が読み分けられず、
+   手で打ち写す人が必ずつまずく */
+.ho-code {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(43, 38, 32, 0.16);
+  background: rgba(255, 255, 255, 0.72);
+  color: #2b2620;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  -webkit-user-select: all;
+  user-select: all;
+}
+
+/* 伏せているあいだは選択させない(●をコピーして貼る事故を防ぐ) */
+.ho-code.is-hidden {
+  color: rgba(43, 38, 32, 0.42);
+  letter-spacing: 0.14em;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.ho-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(43, 38, 32, 0.82);
+}
+
+.ho-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 11px;
+  border-radius: 8px;
+  border: 1.5px solid rgba(43, 38, 32, 0.22);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 3px rgba(43, 38, 32, 0.1);
+  color: #2b2620;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12.5px;
+  /* 16px 未満だと iOS が勝手に拡大するが、ここは等幅で桁を見せたい。
+     引き出しは maximum-scale で拡大を止めてあるので、そのままでいい */
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.ho-input::placeholder {
+  color: rgba(43, 38, 32, 0.34);
+  font-family: inherit;
+}
+
+.ho-input:focus {
+  outline: none;
+  border-color: rgba(216, 160, 0, 0.9);
+  background: #fff;
+}
+
+.ho-btn {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(43, 38, 32, 0.18);
+  background: rgba(255, 255, 255, 0.66);
+  color: #4a4438;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 0.16s ease,
+    border-color 0.16s ease,
+    opacity 0.16s ease;
+}
+
+.ho-btn:hover:not(:disabled) {
+  background: #fff;
+  border-color: rgba(43, 38, 32, 0.3);
+}
+
+.ho-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ho-btn-main {
+  border-color: rgba(216, 160, 0, 0.55);
+  background: rgba(245, 196, 0, 0.24);
+  color: #6b4e00;
+}
+
+.ho-btn-main:hover:not(:disabled) {
+  background: rgba(245, 196, 0, 0.4);
+  border-color: rgba(216, 160, 0, 0.9);
+}
+
+.ho-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: rgba(43, 38, 32, 0.58);
+}

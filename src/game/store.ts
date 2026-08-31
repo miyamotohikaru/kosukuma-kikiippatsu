@@ -50,6 +50,7 @@ import {
   charmIndicesFor,
   charmOf,
   packCharmSet,
+  unpackCharmSet,
   packStyle,
   skinOf,
 } from "@/lib/style";
@@ -60,6 +61,8 @@ import type {
   StabResult,
   StateResponse,
   WinnerInfo,
+  MeResponse,
+  PlayerRecord,
 } from "@/lib/types";
 import { emitGameEvent } from "./events";
 
@@ -280,6 +283,11 @@ interface GameState {
   catchSky: (kind: number) => void;
   /** ニックネームを決める。空文字なら未登録に戻す */
   setNickname: (name: string) => void;
+  /**
+   * ひきつぎコードを入れて、別の端末(や別のドメイン)の記録に乗り換える。
+   * 成功したら剣も本数もチャームも戻る。うまくいかなければ false。
+   */
+  adoptCode: (code: string) => Promise<boolean>;
   /** こすくまくんを つついた。POKE_CHARM_NEED 回で隠しチャームが開く */
   pokeKosukuma: () => void;
   /**
@@ -360,31 +368,171 @@ async function syncWonRounds(
     const q = mine ? `?fp=${encodeURIComponent(mine)}` : "";
     const res = await fetch(`/api/me${q}`);
     if (!res.ok) return;
-    const data = (await res.json()) as { fp?: string | null; wonRounds?: number[] };
+    const data = (await res.json()) as MeResponse;
     if (!mine && data.fp) LS.set("kk-fp", data.fp);
+
+    // **とばした回数を先に確定させる。** 見た目を戻すとき、開いていない
+    // しあげを弾く物差しになるので、順番を入れ替えてはいけない
     const server = Array.isArray(data.wonRounds) ? data.wonRounds : [];
-    if (server.length === 0) return;
+    let wins = get().myWins;
+    if (server.length > 0) {
+      const merged = [...new Set([...loadMyRounds(), ...server])].sort(
+        (a, b) => a - b
+      );
+      LS.set(MY_ROUNDS_KEY, JSON.stringify(merged));
+      wins = Math.max(wins, merged.length);
+      if (wins !== get().myWins) {
+        // 剣のしあげは「とばした回数」で開く。合わせた回数で開き直す
+        const had = new Set(unlockedSkins(get().myWins));
+        const opened = unlockedSkins(wins).filter((i) => !had.has(i));
+        LS.set("kk-wins", String(wins));
+        set({ myWins: wins });
+        if (opened.length > 0) {
+          get().showToast(
+            `とばした きろくを 見つけたよ。あたらしい けんが つかえる！`
+          );
+        }
+      }
+    }
 
-    const merged = [...new Set([...loadMyRounds(), ...server])].sort(
-      (a, b) => a - b
-    );
-    LS.set(MY_ROUNDS_KEY, JSON.stringify(merged));
-
-    const wins = Math.max(get().myWins, merged.length);
-    if (wins === get().myWins) return;
-    // 剣のスキンは「とばした回数」で開く。合わせた回数で開き直す
-    const had = new Set(unlockedSkins(get().myWins));
-    const opened = unlockedSkins(wins).filter((i) => !had.has(i));
-    LS.set("kk-wins", String(wins));
-    set({ myWins: wins });
-    if (opened.length > 0) {
-      get().showToast(
-        `とばした きろくを 見つけたよ。あたらしい けんが つかえる！`
+    // 預かってもらっていた記録を戻す。この端末に元の記録が無ければ
+    // (メモが消えた)見た目までまるごと、あれば数を増やすだけ
+    if (data.player) {
+      applyPlayer(
+        data.player,
+        !mine || LS.get("kk-my-total") === null,
+        wins,
+        set,
+        get
       );
     }
+    // 逆に、端末にしか無い記録はここで預けておく
+    savePlayer(get);
   } catch {
     /* 取れなくても遊べる(端末のメモがそのまま使われる) */
   }
+}
+
+// ── 記録を鍵にひもづけて預ける ───────────────────────────
+// 端末のメモ(localStorage)は消えるもの。Safari は7日で消すし、履歴を消しても
+// 消える。**正はサーバー側**にして、端末は「鍵」だけ持っていればいい形にする。
+// こうしておくと、ひきつぎコード(=鍵)1つで別の端末にも記録がまるごと戻る。
+
+/** いま画面に出ている記録を、預ける形にまとめる */
+function playerOf(s: GameState): PlayerRecord {
+  return {
+    total: s.myTotal,
+    earthCharm: s.hasEarthCharm,
+    skyCatches: s.skyCatches,
+    pokes: s.pokeCount,
+    nickname: s.nickname,
+    charms: packCharmSet(s.equippedCharms),
+    color: s.swordColor,
+    skin: s.swordSkin,
+  };
+}
+
+/** 預けたばかりの中身。同じものを続けて送らないための控え */
+let lastSaved = "";
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * 記録をサーバーに預ける。刺すたび・つつくたびに呼ばれるので、
+ * **2秒まとめてから1回だけ送る**(1万回タップで1万回叩かない)。
+ */
+function savePlayer(get: () => GameState): void {
+  if (saveTimer !== null) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    const fp = peekFingerprint();
+    if (!fp) return;
+    const rec = playerOf(get());
+    const json = JSON.stringify(rec);
+    if (json === lastSaved) return;
+    lastSaved = json;
+    void fetch("/api/me", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fp, ...rec }),
+    }).catch(() => {
+      // 預けられなくても遊べる。次の変化でまた送る
+      lastSaved = "";
+    });
+  }, 2000);
+}
+
+/**
+ * サーバーに預かってもらっていた記録を画面に戻す。
+ *
+ * `fresh` は「この端末には元の記録が無い」= メモが消えたか、ひきつぎコードを
+ * 入れた直後。このときは見た目まで まるごと戻す。
+ * そうでないときは **数を増やすだけ**にする(いま選んでいる剣の色を、
+ * 別の端末の選択で勝手に変えてしまわないため)。
+ *
+ * `wins` は突き合わせ後のとばした回数。**しあげ(金・銀…)はこれで絞る。**
+ * 預かった記録の中身は端末が送ってきた値なので、そのまま着せると
+ * 「勝っていないのに金の剣」が作れてしまう。とばした回数だけはサーバーが
+ * 刺しの記録から数えていて偽れないので、そちらを物差しにする。
+ */
+function applyPlayer(
+  p: PlayerRecord,
+  fresh: boolean,
+  wins: number,
+  set: (patch: Partial<GameState>) => void,
+  get: () => GameState
+): void {
+  const s = get();
+  const patch: Partial<GameState> = {};
+
+  const total = Math.max(s.myTotal, p.total);
+  if (total !== s.myTotal) {
+    patch.myTotal = total;
+    LS.set("kk-my-total", String(total));
+  }
+  if (p.earthCharm && !s.hasEarthCharm) {
+    patch.hasEarthCharm = true;
+    LS.set("kk-earth-charm", "1");
+  }
+  const sky = Math.max(s.skyCatches, p.skyCatches);
+  if (sky !== s.skyCatches) {
+    patch.skyCatches = sky;
+    LS.set("kk-sky-n", String(sky));
+  }
+  const pokes = Math.max(s.pokeCount, p.pokes);
+  if (pokes !== s.pokeCount) {
+    patch.pokeCount = pokes;
+    LS.set("kk-poke-n", String(pokes));
+  }
+  if (pokes >= POKE_CHARM_NEED && !s.hasPokeCharm) {
+    patch.hasPokeCharm = true;
+    LS.set("kk-poke-charm", "1");
+  }
+  // 名前は、この端末でまだ名乗っていなければ引き継ぐ
+  if (p.nickname && (fresh || !s.nickname)) {
+    patch.nickname = p.nickname;
+    LS.set("kk-nick", p.nickname);
+  }
+
+  if (fresh) {
+    patch.swordColor = p.color;
+    LS.set("kk-sword-color", String(p.color));
+    // 開いていないしあげが来たら、ふつうの剣に落とす
+    const skin = unlockedSkins(wins).includes(p.skin) ? p.skin : 0;
+    patch.swordSkin = skin;
+    LS.set("kk-sword-skin", String(skin));
+    const charms = unpackCharmSet(p.charms);
+    if (charms) {
+      // 「持っているもの」からはみ出さないように絞ってから着ける
+      const owned = new Set(
+        ownedCharms(total, p.earthCharm, sky, pokes >= POKE_CHARM_NEED)
+      );
+      const next = charms.filter((i) => owned.has(i)).slice(0, MAX_EQUIPPED_CHARMS);
+      patch.equippedCharms = next;
+      LS.set("kk-charms", JSON.stringify(next));
+    }
+  }
+
+  if (Object.keys(patch).length > 0) set(patch);
 }
 
 export function getFingerprint(): string {
@@ -404,6 +552,11 @@ export function getFingerprint(): string {
  */
 function peekFingerprint(): string | null {
   return LS.get("kk-fp");
+}
+
+/** ひきつぎコード(= 記録を引き当てる鍵)。まだ無ければ null */
+export function getMyCode(): string | null {
+  return peekFingerprint();
 }
 
 /**
@@ -1204,6 +1357,7 @@ export const useGameStore = create<GameState>((set, get) => {
           const myTotal = get().myTotal + 1;
           saveMyStabs(cur.roundNo, myStabs);
           LS.set("kk-my-total", String(myTotal));
+          savePlayer(get);
           // ちょうどチャームがたまった刺しか
           const gotCharm =
             charmLevelOf(myTotal) > charmLevelOf(myTotal - 1)
@@ -1249,6 +1403,7 @@ export const useGameStore = create<GameState>((set, get) => {
             // 当たりも自分の1回として数える(デモは数えない)
             const myTotal = get().myTotal + 1;
             LS.set("kk-my-total", String(myTotal));
+            savePlayer(get);
             LS.set("kk-wins", String(wins));
             const gotCharm =
               charmLevelOf(myTotal) > charmLevelOf(myTotal - 1)
@@ -1431,6 +1586,7 @@ export const useGameStore = create<GameState>((set, get) => {
     setSwordColor: (c: number) => {
       if (!Number.isInteger(c) || c < 0 || c >= SWORD_COLORS.length) return;
       LS.set("kk-sword-color", String(c));
+      savePlayer(get);
       emitGameEvent("ui-tap");
       set({ swordColor: c });
     },
@@ -1444,6 +1600,7 @@ export const useGameStore = create<GameState>((set, get) => {
         return;
       }
       LS.set("kk-sword-skin", String(s));
+      savePlayer(get);
       emitGameEvent("ui-tap");
       set({ swordSkin: s });
     },
@@ -1468,6 +1625,7 @@ export const useGameStore = create<GameState>((set, get) => {
         ? cur.equippedCharms.filter((i) => i !== index)
         : [...cur.equippedCharms, index].sort((a, b) => a - b);
       LS.set("kk-charms", JSON.stringify(next));
+      savePlayer(get);
       emitGameEvent("ui-tap");
       set({ equippedCharms: next });
     },
@@ -1507,6 +1665,7 @@ export const useGameStore = create<GameState>((set, get) => {
         LS.set("kk-earth-clicks", "0");
         LS.set("kk-earth-booms", String(booms));
         LS.set("kk-earth-charm", "1");
+        savePlayer(get);
         set({
           earthClicks: 0,
           earthBooms: booms,
@@ -1539,6 +1698,7 @@ export const useGameStore = create<GameState>((set, get) => {
       const before = skyCharmLevelOf(cur.skyCatches);
       const after = skyCharmLevelOf(catches);
       LS.set("kk-sky-n", String(catches));
+      savePlayer(get);
       set({ skyCatches: catches, caughtSky: skyMask(catches) });
 
       if (after === before) {
@@ -1570,6 +1730,7 @@ export const useGameStore = create<GameState>((set, get) => {
       if (cur.hasPokeCharm) return; // もう持っている人は数えなくていい
       const n = cur.pokeCount + 1;
       LS.set("kk-poke-n", String(n));
+      savePlayer(get);
       if (n < POKE_CHARM_NEED || POKE_CHARM_INDEX < 0) {
         // あと何回かを、指のところへ。**残り100を切ったら赤く大きく**して、
         // 「そろそろ何か起きる」を数字だけでなく見た目でも伝える
@@ -1589,6 +1750,7 @@ export const useGameStore = create<GameState>((set, get) => {
       }
       // 1万回。地球の爆発と同じで、条件はどこにも書かれていない
       LS.set("kk-poke-charm", "1");
+      savePlayer(get);
       set({ pokeCount: n, hasPokeCharm: true });
       equipCharm(POKE_CHARM_INDEX);
       set({ newCharm: POKE_CHARM_INDEX });
@@ -1675,10 +1837,59 @@ export const useGameStore = create<GameState>((set, get) => {
       }
     },
 
+    adoptCode: async (code: string): Promise<boolean> => {
+      const next = code.trim();
+      // サーバーが通す形と同じ物差しで先に弾く(見た目のtypoをここで返す)
+      if (!/^[A-Za-z0-9_-]{8,64}$/.test(next)) {
+        get().showToast("コードの形が ちがうみたい");
+        return false;
+      }
+      if (next === peekFingerprint()) {
+        get().showToast("それは この画面の コードだよ");
+        return false;
+      }
+      try {
+        const res = await fetch(`/api/me?fp=${encodeURIComponent(next)}`);
+        if (!res.ok) throw new Error("me");
+        const data = (await res.json()) as MeResponse;
+        const wonRounds = data.wonRounds ?? [];
+        // 記録がまったく無いコードは、打ちまちがいのほうが疑わしい
+        if (!data.player && wonRounds.length === 0) {
+          get().showToast("そのコードの きろくが 見つからないよ");
+          return false;
+        }
+
+        // ここから先はもう乗り換える。**鍵を先に書き換える**
+        // (書き換え前に落ちても、次に開けば元の記録のままで済む)
+        LS.set("kk-fp", next);
+        lastSaved = ""; // 別人になったので、預け直しの控えは捨てる
+
+        // **とばした回数が先。** 見た目を戻すときの物差しになる
+        const merged = [...new Set([...loadMyRounds(), ...wonRounds])].sort(
+          (a, b) => a - b
+        );
+        LS.set(MY_ROUNDS_KEY, JSON.stringify(merged));
+        const wins = Math.max(get().myWins, merged.length);
+        LS.set("kk-wins", String(wins));
+        set({ myWins: wins });
+
+        if (data.player) applyPlayer(data.player, true, wins, set, get);
+
+        get().showToast(
+          wins > 0 ? "きろくが もどったよ。けんも ついてきた！" : "きろくが もどったよ"
+        );
+        return true;
+      } catch {
+        get().showToast("いま つながらないみたい");
+        return false;
+      }
+    },
+
     setNickname: (name: string) => {
       const trimmed = name.trim().slice(0, NAME_MAX_LEN);
       if (trimmed) LS.set("kk-nick", trimmed);
       else LS.del("kk-nick");
+      savePlayer(get);
       set({ nickname: trimmed || null });
     },
 

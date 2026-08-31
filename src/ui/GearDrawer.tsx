@@ -16,6 +16,7 @@ import { NAME_MAX_LEN } from "@/lib/config";
 import { useGameStore } from "@/game/store";
 import { SkinRack, SwordPreview, SwordRack } from "./SwordRack";
 import { CharmShelf } from "./CharmShelf";
+import { Handoff } from "./Handoff";
 import "./nick.css";
 
 interface GearDrawerProps {
@@ -115,6 +116,12 @@ export default function GearDrawer({ open, onClose }: GearDrawerProps) {
           </section>
           <section className="kk-sec">
             <CharmShelf />
+          </section>
+          {/* いちばん下。ふだんは要らないが、機種変えのときだけ必要になる。
+              上に置くと「けんの したく」に来た人の邪魔になる */}
+          <section className="kk-sec">
+            <p className="kk-sec-label">ひきつぎ</p>
+            <Handoff />
           </section>
         </div>
       </div>
