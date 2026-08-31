@@ -95,6 +95,11 @@ export interface IGameStore {
   postChat(input: ChatInput): Promise<ChatOutcome>;
   /** beforeId より古いコメントを新しい順に(「ぜんぶ みる」で さかのぼる用) */
   chatBefore(beforeId: number, limit: number): Promise<ChatMessage[]>;
+  /**
+   * その端末がとばした代の一覧。**サーバーが持っている記録が正。**
+   * あたり穴に刺した行の fp から引く(勝者の fp は kk_stabs にしか無い)。
+   */
+  wonRoundsOf(fp: string): Promise<number[]>;
 }
 
 // ── 共通ヘルパ ───────────────────────────────────────
@@ -603,6 +608,20 @@ class PostgresStore implements IGameStore {
     return rows.map(toChatMessage);
   }
 
+  async wonRoundsOf(fp: string): Promise<number[]> {
+    await this.ensureSchema();
+    // 決着したラウンドの「あたり穴に刺した行」が、その代をとばした人。
+    // kk_rounds には勝者の fp が無いので、kk_stabs と突き合わせて引く
+    const rows = (await this.sql`
+      SELECT r.round_no FROM kk_rounds r
+      JOIN kk_stabs s
+        ON s.round_no = r.round_no AND s.hole_id = r.winner_hole
+      WHERE r.won_at IS NOT NULL AND s.fp = ${fp}
+      ORDER BY r.round_no
+    `) as { round_no: number }[];
+    return rows.map((r) => r.round_no);
+  }
+
   async claim(roundNo: number, token: string, name: string): Promise<ClaimOutcome> {
     await this.ensureSchema();
     // token一致 & 未クレームのときだけ1行更新される(条件付きUPDATEで排他)
@@ -669,6 +688,8 @@ interface MemRound {
 
 interface MemStab {
   holeId: number;
+  /** 刺した端末。とばした代を引き当てるのに使う */
+  fp: string;
   country: string | null;
   color: number | null;
   style: number | null;
@@ -860,6 +881,7 @@ class MemoryStore implements IGameStore {
     const now = Date.now();
     stabs.set(input.holeId, {
       holeId: input.holeId,
+      fp: input.fp,
       country: input.country,
       color: input.color,
       style: input.style,
@@ -926,6 +948,16 @@ class MemoryStore implements IGameStore {
       .filter((m) => m.id < beforeId)
       .slice(0, limit)
       .map(applyOperator);
+  }
+
+  async wonRoundsOf(fp: string): Promise<number[]> {
+    const out: number[] = [];
+    for (const r of this.data.rounds) {
+      if (r.wonAt === null || r.winnerHole === null) continue;
+      const stab = this.stabsOf(r.roundNo).get(r.winnerHole);
+      if (stab && stab.fp === fp) out.push(r.roundNo);
+    }
+    return out.sort((a, b) => a - b);
   }
 
   async claim(roundNo: number, token: string, name: string): Promise<ClaimOutcome> {
