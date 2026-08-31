@@ -1581,26 +1581,52 @@
 }
 /* ついているチャームは「潰れない大きさ」で全部ならべる。
    1行7個の固定グリッドにしてあるので、13個でもきっちり2行で収まる */
+/* 金具のバーに、チャームがぶら下がっている並び。
+   灰色の丸に1個ずつ入れていたときは、キーホルダーではなく
+   「UIのアイコンが並んでいる」ようにしか見えなかった。 */
 .kk-preview-charms {
   list-style: none;
-  display: grid;
-  /* 幅320pxの端末でも1行7個が入るよう、枠は縮められるようにしておく */
-  grid-template-columns: repeat(7, minmax(20px, 24px));
-  gap: 3px;
-  margin-top: 2px;
-  justify-content: start;
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  /* 少し重ねる。等間隔で離すと、房ではなく整列した粒に見える */
+  gap: 0 1px;
+  margin: 3px 0 0;
+  padding: 5px 3px 0;
+  /* バーはチャームのぶんだけ。器いっぱいに伸ばすと、何も下がっていない所まで
+     金具が続いて「ものさし」に見える */
+  width: max-content;
+  max-width: 100%;
+}
+/* 上に通した金具のバー。ここから下がっている、という読み方をつくる */
+.kk-preview-charms::before {
+  content: "";
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  top: 4px;
+  height: 2.5px;
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    #f2f5fb 0%,
+    #c3cbdb 45%,
+    #8d97ab 100%
+  );
+  box-shadow: 0 1px 1px rgba(43, 38, 32, 0.22);
 }
 .kk-preview-charms li {
-  height: 24px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
-  background: rgba(58, 55, 48, 0.08);
+  line-height: 0;
 }
-/* 隠しチャームだけ受け皿をひと段深く。色は足さない(アクセントはコーラル1本) */
+/* 1個おきに少し下げる。全部そろえると、ぶら下がりではなく定規に見える */
+.kk-preview-charms li:nth-child(even) {
+  margin-top: 4px;
+}
+/* 隠しチャームは、まわりにやわらかい光。丸い受け皿では出せない特別さ */
 .kk-preview-charms li.secret {
-  background: rgba(58, 55, 48, 0.17);
-  box-shadow: inset 0 0 0 1.6px rgba(58, 55, 48, 0.42);
+  filter: drop-shadow(0 0 4px rgba(245, 196, 0, 0.85));
 }
 .kk-preview-sub {
   font-size: 10.5px;

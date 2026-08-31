@@ -141,6 +141,9 @@ export function SwordPreview() {
         <b className="kk-preview-name">{label}</b>
         {hung.length > 0 ? (
           <>
+            {/* 灰色の丸に入れると、キーホルダーではなく「UIのアイコン」に
+                見えてしまう。上に金具のバーを1本通して、そこから
+                ぶら下がっている並びにする(剣についている姿と同じ読み方) */}
             <ul className="kk-preview-charms">
               {hung.map((i) => (
                 <li
@@ -148,7 +151,7 @@ export function SwordPreview() {
                   className={CHARMS[i]?.secret ? "secret" : undefined}
                   title={CHARMS[i]?.name}
                 >
-                  <CharmIcon index={i} size={20} />
+                  <CharmIcon index={i} size={26} />
                 </li>
               ))}
             </ul>
