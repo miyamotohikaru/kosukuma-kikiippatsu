@@ -14,6 +14,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import { useFrame } from "@react-three/fiber";
 import { HOLE_COUNT, MAX_EQUIPPED_CHARMS } from "@/lib/config";
 import { getBit } from "@/lib/bitmask";
 import { getHolePoints } from "@/lib/holes";
@@ -37,6 +38,22 @@ const DROP = 0.095;
 
 const MAX_INSTANCES = HOLE_COUNT * MAX_EQUIPPED_CHARMS;
 
+// ── 月を回したときの揺れ ────────────────────────────
+// 月そのものではなくカメラを回して見せているので、**本当は房は揺れない。**
+// それでも「月を回した」体感なので、回した勢いのぶんだけ房が流れて戻る。
+//
+// **1万枚を毎フレーム置きなおすことはしない**(行列を1万個書きなおして
+// 送りなおすことになり、そこだけで持たなくなる)。板の位置をずらすのは
+// シェーダーの中だけにして、CPU からは「いまどれくらい揺れているか」の
+// 数字を1つ渡すだけにする。
+
+/** これくらいの速さ(ラジアン/秒)で回したら、揺れが最大になる */
+const SWAY_FULL = 0.9;
+/** 手を離してから収まるまでのはやさ(秒) */
+const SWAY_DECAY = 0.85;
+/** 揺れの速さ */
+const SWAY_SPEED = 3.1;
+
 function colsFor(n: number): number {
   if (n <= 3) return 1;
   if (n <= 6) return 2;
@@ -48,6 +65,7 @@ const _quat = new THREE.Quaternion();
 const _n = new THREE.Vector3();
 const _local = new THREE.Vector3();
 const _mat = new THREE.Matrix4();
+const _camDir = new THREE.Vector3();
 
 export default function SwordCharms() {
   const mask = useGameStore((s) => s.mask);
@@ -58,6 +76,9 @@ export default function SwordCharms() {
 
   const points = useMemo(() => getHolePoints(), []);
   const meshRef = useRef<THREE.InstancedMesh>(null);
+  /** 前のフレームのカメラの向きと、いまの揺れの強さ */
+  const prevDir = useRef(new THREE.Vector3());
+  const swayRef = useRef(0);
 
   // 演出中の穴は Swords と同じく描かない(降ってくる剣が自前で房を持っている)
   const hidden = useMemo(() => new Set(playingStabs), [playingStabs]);
@@ -73,21 +94,46 @@ export default function SwordCharms() {
       "aScale",
       new THREE.InstancedBufferAttribute(new Float32Array(MAX_INSTANCES), 1)
     );
+    // 揺れの位相と振れ幅。1枚ずつ変えないと、1000本が同じ拍で動いて
+    // 「板が一斉にずれた」ようにしか見えない
+    g.setAttribute(
+      "aPhase",
+      new THREE.InstancedBufferAttribute(new Float32Array(MAX_INSTANCES), 1)
+    );
+    g.setAttribute(
+      "aSway",
+      new THREE.InstancedBufferAttribute(new Float32Array(MAX_INSTANCES), 1)
+    );
     return g;
   }, []);
 
   const material = useMemo(() => {
     const m = new THREE.ShaderMaterial({
-      uniforms: { uMap: { value: null as THREE.Texture | null } },
+      uniforms: {
+        uMap: { value: null as THREE.Texture | null },
+        uTime: { value: 0 },
+        /** いまどれくらい揺れているか(0=静止 / 1=いちばん揺れる) */
+        uSway: { value: 0 },
+      },
       // ビルボード: instanceMatrix からは位置だけ取り、向きはカメラに正対させる。
       // 剣は月のあちこちを向いているので、板を剣に合わせると裏を向く子が出る
       vertexShader: /* glsl */ `
         attribute vec2 aCell;
         attribute float aScale;
+        attribute float aPhase;
+        attribute float aSway;
+        uniform float uTime;
+        uniform float uSway;
         varying vec2 vUv;
         void main() {
           vUv = uv / vec2(${ATLAS_COLS}.0, ${ATLAS_ROWS}.0) + aCell;
           vec4 center = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+          // ふりこ。横へ振れたぶんだけ、ぶら下がり点を中心に**すこし持ち上がる**
+          // (真下がいちばん低いので、振れれば上がる。ここを足さないと
+          //  横滑りに見えて、ぶら下がっている感じが出ない)
+          float sw = sin(uTime * ${SWAY_SPEED} + aPhase) * aSway * uSway;
+          center.x += sw;
+          center.y += abs(sw) * 0.3;
           center.xy += position.xy * aScale;
           gl_Position = projectionMatrix * center;
         }
@@ -127,6 +173,8 @@ export default function SwordCharms() {
     if (!mesh || !atlas) return;
     const cell = geometry.getAttribute("aCell") as THREE.InstancedBufferAttribute;
     const scale = geometry.getAttribute("aScale") as THREE.InstancedBufferAttribute;
+    const phase = geometry.getAttribute("aPhase") as THREE.InstancedBufferAttribute;
+    const sway = geometry.getAttribute("aSway") as THREE.InstancedBufferAttribute;
     let n = 0;
 
     for (let id = 0; id < HOLE_COUNT && n < MAX_INSTANCES; id++) {
@@ -161,6 +209,11 @@ export default function SwordCharms() {
           Math.floor(list[k] / ATLAS_COLS) / ATLAS_ROWS
         );
         scale.setX(n, CHARM_SIZE * size);
+        // 位相は穴と並び順から作る(毎回おなじ = 開きなおしても揺れ方が変わらない)。
+        // 黄金比のあまりを使うと、となりの穴どうしでもきれいに散る
+        phase.setX(n, ((id * 0.6180339887 + k * 0.317) % 1) * Math.PI * 2);
+        // 下にぶら下がっているものほど大きく振れる(チェーンが長いので)
+        sway.setX(n, CHARM_SIZE * size * (0.34 + row * 0.15));
         n++;
       }
     }
@@ -169,7 +222,24 @@ export default function SwordCharms() {
     mesh.instanceMatrix.needsUpdate = true;
     cell.needsUpdate = true;
     scale.needsUpdate = true;
+    phase.needsUpdate = true;
+    sway.needsUpdate = true;
   }, [mask, stabStyles, stabCharms, hidden, points, geometry, atlas]);
+
+  // 月を回した勢いを測って、シェーダーへ1つの数字で渡す。
+  // 月ではなくカメラが回るので、カメラの向きが変わった角度を勢いとして読む
+  useFrame((state, dt) => {
+    const cur = _camDir.copy(state.camera.position).normalize();
+    const moved =
+      prevDir.current.lengthSq() === 0 ? 0 : cur.angleTo(prevDir.current);
+    prevDir.current.copy(cur);
+    const step = Math.max(dt, 1e-3);
+    const drive = Math.min(moved / step / SWAY_FULL, 1);
+    // 動かした瞬間はすぐ揺れて、手を離したらゆっくり収まる
+    swayRef.current = Math.max(drive, swayRef.current * Math.exp(-step / SWAY_DECAY));
+    material.uniforms.uSway.value = swayRef.current;
+    material.uniforms.uTime.value = state.clock.elapsedTime;
+  });
 
   if (!atlas) return null;
 

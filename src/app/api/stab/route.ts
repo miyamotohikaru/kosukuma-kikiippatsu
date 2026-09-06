@@ -16,6 +16,7 @@ import { maskToBase64 } from "@/lib/bitmask";
 import { packCharmSet, packStyle } from "@/lib/style";
 import type { StabRequest, StabResult } from "@/lib/types";
 import { getStore } from "@/server/store";
+import { countryOf } from "@/server/geo";
 import { sanitizeName } from "@/server/names";
 
 export const runtime = "nodejs";
@@ -102,11 +103,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       .update(ip + IP_SALT)
       .digest("hex")
       .slice(0, 16);
-    const rawCountry = req.headers.get("x-vercel-ip-country");
-    const country =
-      rawCountry && /^[a-z]{2}$/i.test(rawCountry)
-        ? rawCountry.toUpperCase()
-        : null;
+    const country = countryOf(req);
 
     const outcome = await getStore().stab({
       holeId: body.holeId,

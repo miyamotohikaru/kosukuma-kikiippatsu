@@ -10,6 +10,7 @@ import { NextResponse } from "next/server";
 import { CHAT_PAGE } from "@/lib/config";
 import type { ChatResult } from "@/lib/types";
 import { getStore } from "@/server/store";
+import { countryOf } from "@/server/geo";
 import { sanitizeChat, sanitizeName } from "@/server/names";
 
 export const runtime = "nodejs";
@@ -81,11 +82,7 @@ export async function POST(req: Request): Promise<NextResponse> {
       .update(ip + IP_SALT)
       .digest("hex")
       .slice(0, 16);
-    const rawCountry = req.headers.get("x-vercel-ip-country");
-    const country =
-      rawCountry && /^[a-z]{2}$/i.test(rawCountry)
-        ? rawCountry.toUpperCase()
-        : null;
+    const country = countryOf(req);
 
     // round_no は「いつのコメントか」の記録用。表示の並びは id なので、
     // ここが多少ずれても流れは壊れない
