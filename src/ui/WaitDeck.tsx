@@ -14,7 +14,7 @@
 // チャームもストアにあるので、どちらから開いても中身は同じものが見える。
 
 import { useEffect, useState, type CSSProperties } from "react";
-import { useGameStore } from "@/game/store";
+import { isInviteMuted, muteInvite, useGameStore } from "@/game/store";
 import GearDrawer from "./GearDrawer";
 import SwordArt from "./SwordArt";
 import "./ui.css";
@@ -38,12 +38,20 @@ export default function WaitDeck() {
   const [open, setOpen] = useState(false);
   /** この待ちのあいだは、もう誘わない(押した/ことわった) */
   const [done, setDone] = useState(false);
+  /** ✕ で「次からも出さない」を選んである。端末のメモから読む */
+  const [muted, setMuted] = useState(false);
   /** この待ちが始まった時刻(0 = 待っていない) */
   const [waitFrom, setWaitFrom] = useState(0);
   /** 下にあるものの高さ(px)。測れるまでは出さない */
   const [lift, setLift] = useState<number | null>(null);
 
   const active = cooldownUntil > now;
+
+  // メモを読むのは画面が出てから(サーバー側では読めないので、
+  // 最初の描画に混ぜると食い違う)。誘いは2.5秒後なので間に合う
+  useEffect(() => {
+    setMuted(isInviteMuted());
+  }, []);
 
   // 待っているあいだだけ時計を進める。ピルほど細かくなくていい
   useEffect(() => {
@@ -71,6 +79,7 @@ export default function WaitDeck() {
   const wantInvite =
     active &&
     !done &&
+    !muted &&
     !open &&
     // 刺した直後の「……」や「セーフ！」の最中には出さない。
     // 月をまた さわれるようになってから、はじめて声をかける
@@ -140,13 +149,19 @@ export default function WaitDeck() {
               ▸
             </span>
           </button>
-          {/* ことわる道をそえておく。押した人にも、ことわった人にも、
-              この待ちのあいだは二度と声をかけない */}
+          {/* ことわる道をそえておく。**これを押したら次からも出さない。**
+              要らない人には、待つたびに毎回ことわらせるのがいちばん煩わしい。
+              (誘いを押して開いた人のほうは、この待ちのあいだ黙るだけ) */}
           <button
             type="button"
             className="wd-invite-x"
-            aria-label="いまは いい"
-            onClick={() => setDone(true)}
+            aria-label="つぎからは 出さない"
+            title="つぎからは 出さない"
+            onClick={() => {
+              setDone(true);
+              setMuted(true);
+              muteInvite();
+            }}
           >
             ✕
           </button>

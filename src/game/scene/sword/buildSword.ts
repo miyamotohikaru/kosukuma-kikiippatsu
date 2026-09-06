@@ -630,6 +630,12 @@ export interface ToySword {
   body: THREE.Group;
   /** 毎フレーム呼ぶ(チャームの揺れ・にじいろの更新用)。t = 経過秒 */
   update: (t: number) => void;
+  /**
+   * 刺さった衝撃を房へ伝える(**刺さった瞬間に1回だけ**呼ぶ)。
+   * ふだんの小さな揺れの上へ、大きく振れてすぐ収まる一振りを足す。
+   * strength は倍率(1 = ふつうの刺し)。
+   */
+  kick: (strength?: number) => void;
   dispose: () => void;
 }
 
@@ -718,6 +724,16 @@ const EARTH_SPIN = 0.32;
 /** 重さの演出: 全部ぶら下げても2.5°まで傾ける */
 const WEIGHT_LEAN_MAX = 0.044;
 /** 房のゆれが剣に返ってくる量(気づかない程度に)。上限つきで暴れさせない */
+/**
+ * 刺さった衝撃で房が振れる量(ふだんの揺れの何倍から始めるか)と、
+ * 収まるまでの速さ(秒)。**ふりこは「大きく1回、あとは小さく」**なので、
+ * 減衰は短めにして、余韻を引きずらせない。
+ */
+const KICK_GAIN = 2.8;
+const KICK_DECAY = 0.62;
+/** 衝撃直後だけ、ふだんより速く振れる */
+const KICK_SPEED = 2.4;
+
 const SWAY_GAIN = 0.025;
 const SWAY_MAX = 0.012;
 
@@ -1371,23 +1387,45 @@ export function buildToySword(opts: ToySwordOptions): ToySword {
 
   if (weightLean > 0) body.rotation.z = -weightLean;
 
+  // 衝撃は「次に update が来た時刻」を0秒として数えはじめる。
+  // kick() の側は経過秒を知らないので、ここで受け取る
+  let kickPending = 0;
+  let kickAt = -1;
+  let kickGain = 0;
+  const kick = (strength = 1) => {
+    kickPending = strength > 0 ? strength : 0;
+  };
+
   const update = (t: number) => {
     tickSwordMaterial(material, t);
+    if (kickPending > 0) {
+      kickAt = t;
+      kickGain = kickPending;
+      kickPending = 0;
+    }
+    const since = kickAt < 0 ? -1 : t - kickAt;
+    const hit =
+      since < 0 ? 0 : kickGain * KICK_GAIN * Math.exp(-since / KICK_DECAY);
+
     let react = 0;
     for (const s of swings) {
       // ふりこ。前後(x)はゆっくりにして、機械的な往復に見えないようにする。
       // 長いチェーンほど遅く小さく揺れるので、13個でも位相がばらけたまま。
       // 開いた姿勢(rest)は保ったまま、その上へ小さな揺れを掛ける
       const sw = Math.sin(t * s.speed + s.phase);
+      // 衝撃ぶん。**since=0 で 0 から始める**ので、ふだんの揺れから段差なく
+      // つながる(いきなり角度が飛ぶと、別の剣に差し替わったように見える)
+      const hitSw = hit === 0 ? 0 : hit * Math.sin(since * s.speed * KICK_SPEED);
       _swayEuler.set(
-        s.amp * 0.75 * Math.sin(t * s.speed * 0.77 + s.phase * 1.7),
+        s.amp *
+          (0.75 * Math.sin(t * s.speed * 0.77 + s.phase * 1.7) + hitSw * 0.45),
         0,
-        s.side * s.amp * sw
+        s.side * s.amp * (sw + hitSw)
       );
       s.pivot.quaternion
         .setFromEuler(_swayEuler)
         .multiply(s.rest);
-      react += s.side * sw * s.weight;
+      react += s.side * (sw + hitSw) * s.weight;
       if (s.spin) s.spin.rotation.y = t * EARTH_SPIN; // ちきゅうの自転
     }
     if (swings.length > 0) {
@@ -1401,6 +1439,7 @@ export function buildToySword(opts: ToySwordOptions): ToySword {
     root,
     body,
     update,
+    kick,
     dispose: () => {
       geometry.dispose();
       material.dispose();

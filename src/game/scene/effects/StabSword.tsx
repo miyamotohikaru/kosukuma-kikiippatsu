@@ -8,7 +8,7 @@
 // 「主役の1本」なので、持っているチャームを**全部**ぶら下げて揺らす
 // (月の1000本はビーズ1個に簡略化しているぶん、自分の剣だけは じまんできる)。
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { charmLevelOf, MAX_EQUIPPED_CHARMS, T_STAB } from "@/lib/config";
@@ -138,10 +138,17 @@ export default function StabSword() {
   const holeId = useMemo(() => useGameStore.getState().selectedHole, []);
   const rig = useMemo(buildRig, []);
   useEffect(() => () => rig.dispose(), [rig]);
+  /** 前のフレームの場面。刺さりきった瞬間を1回だけ捕まえるため */
+  const wasStabbing = useRef(false);
 
   useFrame((state) => {
     if (holeId === null) return;
     const s = useGameStore.getState();
+
+    // 刺さりきった瞬間(stabbing の終わり)に、房へ衝撃を伝える。
+    // ぶら下がっているものが揺れてはじめて「ぶつかった」感じになる
+    if (wasStabbing.current && s.phase !== "stabbing") rig.sword.kick();
+    wasStabbing.current = s.phase === "stabbing";
     const hw = getHoleWorld(holeId);
     _pos.copy(hw.pos);
     _n.copy(hw.normal);

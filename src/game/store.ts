@@ -559,6 +559,23 @@ export function getMyCode(): string | null {
   return peekFingerprint();
 }
 
+// ── したくへの さそい ──────────────────────────────
+// 待ちのあいだに出る「つぎの けんを えらんでおく?」の誘い。
+// ✕ は**その場で引っこめるだけでなく、次からも出さない**。
+// 要らない人にとっては、待つたびに毎回ことわらされるのがいちばん煩わしい。
+
+const INVITE_OFF_KEY = "kk-invite-off";
+
+/** もう誘わないことにしたか */
+export function isInviteMuted(): boolean {
+  return LS.get(INVITE_OFF_KEY) === "1";
+}
+
+/** 次からは誘わない */
+export function muteInvite(): void {
+  LS.set(INVITE_OFF_KEY, "1");
+}
+
 /**
  * デモ(?demo=watch): 「他の人が当てて、こすくまくんが飛んでいくのを見ている側」の
  * 画面をその場で再生する。サーバーには一切書き込まない(記録は残らない)。
