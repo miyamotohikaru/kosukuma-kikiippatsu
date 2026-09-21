@@ -12,6 +12,7 @@ import {
   CHAT_BURST_PER_MIN,
   CHAT_COOLDOWN_SEC,
   CHAT_FETCH,
+  CHAT_SINCE_ID,
   OPERATOR_CHAT_IDS,
   COOLDOWN_SEC,
   HOLE_COUNT,
@@ -440,8 +441,11 @@ class PostgresStore implements IGameStore {
 
   /** 新しい順の直近コメント。代はまたいで残す */
   private async chatOf(): Promise<ChatMessage[]> {
+    // CHAT_SINCE_ID より古いぶんは出さない(**消してはいない**。
+    // 数字を 0 に戻せば、そのまま元どおり見えるようになる)
     const rows = (await this.sql`
       SELECT id, name, country, body, created_at FROM kk_chat
+      WHERE id > ${CHAT_SINCE_ID}
       ORDER BY id DESC LIMIT ${CHAT_FETCH}
     `) as {
       id: string | number;
@@ -656,9 +660,11 @@ class PostgresStore implements IGameStore {
 
   async chatBefore(beforeId: number, limit: number): Promise<ChatMessage[]> {
     await this.ensureSchema();
+    // さかのぼりも同じ線で止める。ここを忘れると「ぜんぶ みる」から
+    // 畳んだはずの古いコメントが出てきてしまう
     const rows = (await this.sql`
       SELECT id, name, country, body, created_at FROM kk_chat
-      WHERE id < ${beforeId}
+      WHERE id < ${beforeId} AND id > ${CHAT_SINCE_ID}
       ORDER BY id DESC LIMIT ${limit}
     `) as {
       id: string | number;
@@ -947,7 +953,10 @@ class MemoryStore implements IGameStore {
       stabCharms: this.charmsOf(active.roundNo),
       recent,
       prevWinner: prev ? memWinnerInfo(prev) : null,
-      chat: this.data.chat.slice(0, CHAT_FETCH).map(applyOperator),
+      chat: this.data.chat
+        .filter((m) => m.id > CHAT_SINCE_ID)
+        .slice(0, CHAT_FETCH)
+        .map(applyOperator),
     };
   }
 
@@ -1040,7 +1049,7 @@ class MemoryStore implements IGameStore {
 
   async chatBefore(beforeId: number, limit: number): Promise<ChatMessage[]> {
     return this.data.chat
-      .filter((m) => m.id < beforeId)
+      .filter((m) => m.id < beforeId && m.id > CHAT_SINCE_ID)
       .slice(0, limit)
       .map(applyOperator);
   }
